@@ -16,16 +16,17 @@
 	<buildtool_depend>catkin</buildtool_depend>
 	<depend>cv_bridge</depend>
 	<depend>dr_base</depend>
-	<depend>dr_eigen</depend>
 	<depend>dr_opencv</depend>
 	<depend>dr_pcl</depend>
 	<depend>dr_util</depend>
+	<depend>eigen_conversions</depend>
 	<depend>image_transport</depend>
 	<depend>nodelet</depend>
 	<depend>pcl_ros</depend>
 	<depend>roscpp</depend>
 	<depend>sensor_msgs</depend>
 	<depend>tf</depend>
+	<depend>tf_conversions</depend>
 	<depend>visualization_msgs</depend>
 
 	<export>

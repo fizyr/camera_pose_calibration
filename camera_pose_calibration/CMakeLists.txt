@@ -5,13 +5,14 @@ find_package(catkin REQUIRED COMPONENTS
 	roscpp
 	pcl_ros
 	cv_bridge
+	eigen_conversions
 	sensor_msgs
 	image_transport
 	tf
+	tf_conversions
 	visualization_msgs
 	nodelet
 	dr_base
-	dr_eigen
 	dr_util
 	dr_pcl
 	dr_opencv

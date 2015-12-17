@@ -1,15 +1,14 @@
 #include "node.hpp"
 
 #include <dr_opencv/opencv.hpp>
-#include <dr_eigen/yaml.hpp>
-#include <dr_eigen/tf.hpp>
-#include <dr_eigen/ros.hpp>
 
 #include <pcl/io/pcd_io.h>
 #include <pcl_ros/point_cloud.h>
 #include <pcl_conversions/pcl_conversions.h>
 #include <pcl/common/transforms.h>
 
+#include <eigen_conversions/eigen_msg.h>
+#include <tf_conversions/tf_eigen.h>
 #include <sensor_msgs/image_encodings.h>
 #include <cv_bridge/cv_bridge.h>
 #include <message_filters/subscriber.h>
@@ -265,7 +264,7 @@ bool CameraPoseCalibrationNode::onCalibrate(dr_msgs::Calibrate::Request & req, d
 			}
 			transform_listener.lookupTransform(req.target_frame, req.tag_frame, now, transform);
 
-			tag_to_target = toEigen(transform).matrix();
+			tf::transformTFToEigen(transform, tag_to_target);
 		} catch (tf::TransformException const & e) {
 			DR_ERROR("Failed to find transform. Error: " << e.what());
 			return false;
@@ -284,13 +283,14 @@ bool CameraPoseCalibrationNode::onCalibrate(dr_msgs::Calibrate::Request & req, d
 	pcl::transformPointCloud(*debug_information->target_cloud, *transformed_target_cloud, Eigen::Affine3d(camera_to_tag.inverse()));
 
 	// copy result to response
-	res.transform = toRosTransform(camera_to_target);
+	tf::transformEigenToMsg(camera_to_target, res.transform);
 
 	// publish result if necessary
 	calibrated = true;
+	tf::Transform tf_camera_to_target;
+	transformEigenToTF(camera_to_target, tf_camera_to_target);
+	calibration_transform = tf::StampedTransform(tf_camera_to_target, now, req.target_frame, cloud->header.frame_id);
 	if (publish_transform) {
-		tf::Transform tf_camera_to_target = toTfTransform(camera_to_target);
-		calibration_transform = tf::StampedTransform(tf_camera_to_target, now, req.target_frame, cloud->header.frame_id);
 		transform_broadcaster.sendTransform(calibration_transform);
 	}
 
@@ -315,8 +315,8 @@ bool CameraPoseCalibrationNode::onCalibrate(dr_msgs::Calibrate::Request & req, d
 	projected_source_cloud_publisher.publish(debug_information->projected_source_cloud);
 	detected_pattern_publisher.publish(cv_bridge::CvImage(std_msgs::Header(), "bgr8", detected_pattern).toImageMsg());
 
-	DR_INFO(cloud->header.frame_id << " to " << req.tag_frame << " :\n" << dr::toYaml(camera_to_tag));
-	DR_INFO(cloud->header.frame_id << " to " << req.target_frame << " :\n" << dr::toYaml(camera_to_target));
+	DR_INFO(cloud->header.frame_id << " to " << req.tag_frame << " :\n" << camera_to_tag.matrix() );
+	DR_INFO(cloud->header.frame_id << " to " << req.target_frame << " :\n" << camera_to_target.matrix() );
 
 	return true;
 }
