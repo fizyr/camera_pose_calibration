@@ -1,0 +1,67 @@
+cmake_minimum_required(VERSION 2.8.3)
+project(camera_pose_calibration)
+
+find_package(catkin REQUIRED COMPONENTS
+	roscpp
+	pcl_ros
+	cv_bridge
+	sensor_msgs
+	image_transport
+	tf
+	visualization_msgs
+	nodelet
+	dr_base
+	dr_eigen
+	dr_util
+	dr_pcl
+	dr_opencv
+	message_generation
+)
+
+find_package(OpenCV REQUIRED)
+find_package(PCL REQUIRED)
+
+link_directories(${PCL_LIBRARY_DIRS})
+add_definitions(${PCL_DEFINITIONS})
+
+add_message_files(
+	DIRECTORY msg
+)
+
+add_service_files(
+	DIRECTORY srv
+)
+
+generate_messages(
+	DEPENDENCIES geometry_msgs sensor_msgs
+)
+
+catkin_package()
+
+dr_include_directories(
+	${catkin_INCLUDE_DIRS}
+	${OpenCV_INCLUDE_DIRS}
+	${PCL_INCLUDE_DIRS}
+)
+
+add_library(${PROJECT_NAME}_nodelet SHARED src/nodelet.cpp src/node.cpp src/camera_pose_calibration.cpp)
+target_link_libraries(${PROJECT_NAME}_nodelet
+	${catkin_LIBRARIES}
+	${OpenCV_LIBRARIES}
+	${PCL_LIBRARIES}
+)
+add_dependencies(${PROJECT_NAME}_nodelet ${PROJECT_NAME}_gencpp)
+
+add_executable(${PROJECT_NAME} src/main.cpp)
+target_link_libraries(${PROJECT_NAME} ${PROJECT_NAME}_nodelet)
+
+
+install(TARGETS ${PROJECT_NAME} ${PROJECT_NAME}_nodelet
+	ARCHIVE DESTINATION ${CATKIN_PACKAGE_LIB_DESTINATION}
+	LIBRARY DESTINATION ${CATKIN_PACKAGE_LIB_DESTINATION}
+	RUNTIME DESTINATION ${CATKIN_PACKAGE_BIN_DESTINATION}
+)
+
+install(DIRECTORY launch DESTINATION ${CATKIN_PACKAGE_SHARE_DESTINATION})
+
+install(FILES nodelet_plugins.xml DESTINATION ${CATKIN_PACKAGE_SHARE_DESTINATION})

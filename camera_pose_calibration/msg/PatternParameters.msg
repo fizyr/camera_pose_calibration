@@ -1,0 +1,5 @@
+uint8 pattern_width
+uint8 pattern_height
+float64 pattern_distance
+float64 neighbor_distance
+float64 valid_pattern_ratio_threshold

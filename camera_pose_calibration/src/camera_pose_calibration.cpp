@@ -1,0 +1,135 @@
+#include "camera_pose_calibration.hpp"
+
+#include <dr_pcl/pointcloud_tools.hpp>
+
+#include <dr_log/dr_log.hpp>
+
+#include <pcl/segmentation/sac_segmentation.h>
+#include <pcl/kdtree/kdtree_flann.h>
+
+namespace dr {
+
+pcl::ModelCoefficients::Ptr fitPointsToPlane(pcl::PointCloud<pcl::PointXYZ>::Ptr cloud) {
+	pcl::ModelCoefficients::Ptr coefficients(new pcl::ModelCoefficients);
+	pcl::PointIndices::Ptr inliers(new pcl::PointIndices);
+
+	// create the segmentation object
+	pcl::SACSegmentation<pcl::PointXYZ> seg;
+
+	// optional
+	seg.setOptimizeCoefficients(true);
+
+	// mandatory
+	seg.setModelType(pcl::SACMODEL_PLANE);
+	seg.setMethodType(pcl::SAC_RANSAC);
+	seg.setDistanceThreshold(0.01);
+
+	seg.setInputCloud(cloud);
+	seg.segment(*inliers, *coefficients);
+
+	if (inliers->indices.size() == 0) {
+		throw std::runtime_error("Could not estimate a planar model for the given pointcloud.");
+	}
+
+	return coefficients;
+}
+
+Eigen::Isometry3d findCalibrationIsometry(
+	cv::Mat const & image,
+	pcl::PointCloud<pcl::PointXYZ>::Ptr cloud,
+	int pattern_width,
+	int pattern_height,
+	double pattern_distance,
+	double neighbor_distance,
+	double valid_pattern_ratio_threshold,
+	double point_cloud_scale_x,
+	double point_cloud_scale_y,
+	std::shared_ptr<CalibrationInformation> const debug_information
+) {
+	cv::Size pattern_size(pattern_width, pattern_height);
+
+	// find pattern
+	std::vector<cv::Point2f> image_points;
+	if (!cv::findCirclesGrid(image, pattern_size, image_points, cv::CALIB_CB_ASYMMETRIC_GRID)) {
+		throw std::runtime_error("Failed to find calibration pattern.");
+	}
+
+	if (debug_information) {
+		debug_information->image_points = image_points;
+	}
+
+	// get the (x, y, z) points of the calibration pattern
+	pcl::PointCloud<pcl::PointXYZ>::Ptr source_cloud(new pcl::PointCloud<pcl::PointXYZ>);
+	pcl::KdTreeFLANN<pcl::PointXYZ> kd_tree;
+	kd_tree.setInputCloud(cloud);
+	for (cv::Point const & p : image_points) {
+		if (p.x < 0 || p.y < 0) {
+			throw std::runtime_error("Found invalid image point for calibration pattern point.");
+		}
+
+		pcl::PointXYZ average = cloud->at(p.x * point_cloud_scale_x, p.y * point_cloud_scale_y);
+		if (std::isnan(average.x) || std::isnan(average.y) || std::isnan(average.z)) {
+			source_cloud->push_back(average);
+			continue;
+			//throw std::runtime_error("Found invalid real world point (NaN) for calibration pattern point.");
+		}
+
+		// find neighboring pixels and average them
+		if (neighbor_distance > 0) {
+			std::vector<int> neighbor_indices;
+			std::vector<float> neighbor_squared_distances;
+			kd_tree.radiusSearch(average, neighbor_distance, neighbor_indices, neighbor_squared_distances);
+			for (int index : neighbor_indices) {
+				average.x += cloud->points[index].x;
+				average.y += cloud->points[index].y;
+				average.z += cloud->points[index].z;
+			}
+			average.x /= neighbor_indices.size() + 1;
+			average.y /= neighbor_indices.size() + 1;
+			average.z /= neighbor_indices.size() + 1;
+		}
+
+		source_cloud->push_back(average);
+	}
+
+	// create target (expected) model
+	pcl::PointCloud<pcl::PointXYZ>::Ptr target_cloud(new pcl::PointCloud<pcl::PointXYZ>);
+	generateAcircles(target_cloud, pattern_distance, pattern_size.height, pattern_size.width);
+
+	if (debug_information) {
+		debug_information->source_cloud = source_cloud;
+		debug_information->target_cloud = target_cloud;
+	}
+
+	// remove NaN's
+	std::vector<size_t> nan_indices = findNan(*source_cloud);
+
+	if (double(nan_indices.size()) / (pattern_width * pattern_height) > 1.f - valid_pattern_ratio_threshold) {
+		throw std::runtime_error("Found too many invalid (NaN) points to find isometry.");
+	}
+
+	eraseIndices(nan_indices, *source_cloud);
+	eraseIndices(nan_indices, *target_cloud);
+
+	if (debug_information) {
+		debug_information->nan_indices = nan_indices;
+	}
+
+	// project calibration points to plane to reduce noise
+	pcl::ModelCoefficients::Ptr plane_coefficients = fitPointsToPlane(source_cloud);
+	pcl::PointCloud<pcl::PointXYZ>::Ptr projected_source_cloud(new pcl::PointCloud<pcl::PointXYZ>);
+	projectCloudOnPlane(source_cloud, projected_source_cloud, plane_coefficients);
+
+	if (debug_information) {
+		debug_information->plane_coefficients = plane_coefficients;
+		debug_information->projected_source_cloud = projected_source_cloud;
+	}
+
+	// find actual isometry from target (calibration tag) to source (camera)
+	Eigen::Isometry3d isometry = findIsometry(projected_source_cloud, target_cloud);
+
+	return isometry;
+}
+
+
+}

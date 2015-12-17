@@ -1,0 +1,6 @@
+<library path="lib/libcamera_pose_calibration_nodelet">
+	<class name="dr/CameraPoseCalibrationNodelet" type="dr::CirclesCalibrationNodelet" base_class_type="nodelet::Nodelet">
+		<description>Camera pose calibration using the OpenCV asymmetric circles pattern.</description>
+	</class>
+</library>
+

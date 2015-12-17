@@ -1,0 +1,9 @@
+sensor_msgs/Image image
+sensor_msgs/PointCloud2 cloud
+string tag_frame
+string target_frame
+float64 point_cloud_scale_x
+float64 point_cloud_scale_y
+camera_pose_calibration/PatternParameters pattern
+---
+geometry_msgs/Transform transform
