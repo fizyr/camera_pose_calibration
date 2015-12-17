@@ -14,13 +14,15 @@
 #include <message_filters/subscriber.h>
 #include <message_filters/time_synchronizer.h>
 
+#include <future>
+#include <tuple>
+
 namespace camera_pose_calibration {
 
 using namespace dr;
 
 CameraPoseCalibrationNode::CameraPoseCalibrationNode() :
 	image_transport(node_handle_),
-	receive_data(false),
 	calibrated(false)
 {
 	// initialize ros communication
@@ -153,34 +155,44 @@ void CameraPoseCalibrationNode::onTfTimeout(ros::TimerEvent const &) {
 }
 
 bool CameraPoseCalibrationNode::onCalibrateTopic(dr_msgs::CalibrateTopic::Request & req, dr_msgs::CalibrateTopic::Response & res) {
+	// Use a specific callback queue for the data topics.
+	ros::CallbackQueue queue;
 
 	// Synchronize image and point cloud from topic
-	message_filters::Subscriber<sensor_msgs::Image> image_sub(node_handle_, req.image_topic, 1);
-	message_filters::Subscriber<sensor_msgs::PointCloud2> cloud_sub(node_handle_, req.cloud_topic, 1);
+	message_filters::Subscriber<sensor_msgs::Image> image_sub(node_handle_, req.image_topic, 1, ros::TransportHints(), &queue);
+	message_filters::Subscriber<sensor_msgs::PointCloud2> cloud_sub(node_handle_, req.cloud_topic, 1, ros::TransportHints(), &queue);
 	message_filters::TimeSynchronizer<sensor_msgs::Image, sensor_msgs::PointCloud2> sync(image_sub, cloud_sub, 10);
-	sync.registerCallback(boost::bind(&CameraPoseCalibrationNode::onSynchronizedData, this, _1, _2));
 
-	// Receive image and point cloud from topic
-	receive_data = true;
-	ros::AsyncSpinner spinner(1);
+	// Use a promise/future for communicating the data between threads.
+	std::promise<std::tuple<sensor_msgs::Image, sensor_msgs::PointCloud2>> promise;
+	auto future = promise.get_future();
+	auto callback = std::bind([&promise] (sensor_msgs::Image const & image, sensor_msgs::PointCloud2 const & cloud) {
+		promise.set_value(std::make_tuple(image, cloud));
+	});
+	sync.registerCallback(callback);
+
+	// Run a background spinner for the callback queue.
+	ros::AsyncSpinner spinner(1, &queue);
 	spinner.start();
-	while (ros::ok()) {
-		if (cloud.data.size() > 0 && image.data.size() > 0) {
-			break;
-		}
-	}
-	receive_data = false;
-	spinner.stop();
-	if (!cloud.data.size() > 0 || !image.data.size() > 0) {
-		DR_ERROR("No image and/or point cloud received.");
-		return false;
+
+	// Wait for the future.
+	while (true) {
+		if (!node_handle_.ok()) return false;
+		future.wait_for(std::chrono::milliseconds(100));
+		if (future.valid()) break;
 	}
 
 	dr_msgs::Calibrate::Request calibrate_request;
 	dr_msgs::Calibrate::Response calibrate_response;
 
-	calibrate_request.image                         = image;
-	calibrate_request.cloud                         = cloud;
+	// Stop the spinner and copy the result to the request.
+	spinner.stop();
+	std::tie(calibrate_request.image, calibrate_request.cloud) = future.get();
+
+	if (!calibrate_request.image.data.size() > 0 || !calibrate_request.cloud.data.size() > 0) {
+		DR_ERROR("No image and/or point cloud received.");
+		return false;
+	}
 
 	// Get all other calibration information from the service call request
 	calibrate_request.pattern_width                 = req.pattern_width;
@@ -196,6 +208,7 @@ bool CameraPoseCalibrationNode::onCalibrateTopic(dr_msgs::CalibrateTopic::Reques
 	if (!onCalibrate(calibrate_request, calibrate_response)) {
 		return false;
 	}
+
 	res.transform = calibrate_response.transform;
 	return true;
 }
@@ -321,12 +334,6 @@ bool CameraPoseCalibrationNode::onCalibrate(dr_msgs::Calibrate::Request & req, d
 	return true;
 }
 
-void CameraPoseCalibrationNode::onSynchronizedData(sensor_msgs::ImageConstPtr const & image_ptr, const sensor_msgs::PointCloud2ConstPtr & cloud_ptr) {
-	if (receive_data) {
-		cloud = *cloud_ptr;
-		image = *image_ptr;
-	}
-}
 
 }
 

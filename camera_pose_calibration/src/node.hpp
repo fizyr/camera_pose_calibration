@@ -60,12 +60,6 @@ protected:
 	/// Timer to periodically republish TF transforms.
 	ros::Timer tf_timer;
 
-	/// Synchronized input point cloud
-	sensor_msgs::PointCloud2 cloud;
-
-	/// Synchronized input image
-	sensor_msgs::Image image;
-
 	/// The found calibration transformation.
 	tf::StampedTransform calibration_transform;
 
@@ -74,9 +68,6 @@ protected:
 
 	/// Rate with which to publish transforms.
 	double publish_rate;
-
-	/// Determines if we need to copy the image and point cloud from a ros topic to a member variable
-	bool receive_data;
 
 	/// Determines if we have calibrated (and thus should publish the transform).
 	bool calibrated;
@@ -95,9 +86,6 @@ protected:
 
 	/// Calibrates the camera given the information in the request.
 	bool onCalibrate(dr_msgs::Calibrate::Request & req, dr_msgs::Calibrate::Response & res);
-
-	/// Called when synchronized image and pointcloud data is received.
-	void onSynchronizedData(sensor_msgs::ImageConstPtr const & image_ptr, const sensor_msgs::PointCloud2ConstPtr & cloud_ptr);
 };
 
 }
