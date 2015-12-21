@@ -14,6 +14,8 @@
 #include <message_filters/subscriber.h>
 #include <message_filters/time_synchronizer.h>
 
+#include <boost/bind.hpp>
+
 #include <future>
 #include <tuple>
 
@@ -163,12 +165,14 @@ bool CameraPoseCalibrationNode::onCalibrateTopic(dr_msgs::CalibrateTopic::Reques
 	message_filters::Subscriber<sensor_msgs::PointCloud2> cloud_sub(node_handle_, req.cloud_topic, 1, ros::TransportHints(), &queue);
 	message_filters::TimeSynchronizer<sensor_msgs::Image, sensor_msgs::PointCloud2> sync(image_sub, cloud_sub, 10);
 
+	using InputData = std::tuple<sensor_msgs::Image::ConstPtr, sensor_msgs::PointCloud2::ConstPtr>;
+
 	// Use a promise/future for communicating the data between threads.
-	std::promise<std::tuple<sensor_msgs::Image, sensor_msgs::PointCloud2>> promise;
-	auto future = promise.get_future();
-	auto callback = std::bind([&promise] (sensor_msgs::Image const & image, sensor_msgs::PointCloud2 const & cloud) {
+	std::promise<InputData> promise;
+	std::future<InputData> future = promise.get_future();
+	auto callback = boost::bind<void>([&promise] (sensor_msgs::Image::ConstPtr image, sensor_msgs::PointCloud2::ConstPtr cloud) {
 		promise.set_value(std::make_tuple(image, cloud));
-	});
+	}, _1, _2);
 	sync.registerCallback(callback);
 
 	// Run a background spinner for the callback queue.
@@ -178,8 +182,7 @@ bool CameraPoseCalibrationNode::onCalibrateTopic(dr_msgs::CalibrateTopic::Reques
 	// Wait for the future.
 	while (true) {
 		if (!node_handle_.ok()) return false;
-		future.wait_for(std::chrono::milliseconds(100));
-		if (future.valid()) break;
+		if (future.wait_for(std::chrono::milliseconds(100)) == std::future_status::ready) break;
 	}
 
 	dr_msgs::Calibrate::Request calibrate_request;
@@ -187,9 +190,11 @@ bool CameraPoseCalibrationNode::onCalibrateTopic(dr_msgs::CalibrateTopic::Reques
 
 	// Stop the spinner and copy the result to the request.
 	spinner.stop();
-	std::tie(calibrate_request.image, calibrate_request.cloud) = future.get();
+	InputData data = future.get();
+	calibrate_request.image = *std::get<0>(data);
+	calibrate_request.cloud = *std::get<1>(data);
 
-	if (!calibrate_request.image.data.size() > 0 || !calibrate_request.cloud.data.size() > 0) {
+	if (calibrate_request.image.data.empty() || calibrate_request.cloud.data.empty()) {
 		DR_ERROR("No image and/or point cloud received.");
 		return false;
 	}
