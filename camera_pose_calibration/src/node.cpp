@@ -42,6 +42,8 @@ CameraPoseCalibrationNode::CameraPoseCalibrationNode() :
 	// parameters
 	publish_transform = getParam("publish_transform", false, false);
 	publish_rate      = getParam("publish_rate", 1, false);
+	image_topic       = getParam<std::string>("image", "rgb/image_color");
+	cloud_topic       = getParam<std::string>("cloud", "depth_registered/points");
 
 	if (publish_transform) {
 		tf_timer = node_handle_.createTimer(publish_rate, &CameraPoseCalibrationNode::onTfTimeout, this);
@@ -57,12 +59,12 @@ void CameraPoseCalibrationNode::parseInput() {
 	if (!manual_input) return;
 
 	// construct the request
-	dr_msgs::Calibrate::Request req;
-	req.pattern_width                 = getParam("pattern_width", 3);
-	req.pattern_height                = getParam("pattern_height", 9);
-	req.pattern_distance              = getParam("pattern_distance", 0.04);
-	req.neighbor_distance             = getParam("neighbor_distance", 0.01);
-	req.valid_pattern_ratio_threshold = getParam("valid_pattern_ratio_threshold", 0.7);
+	camera_pose_calibration::Calibrate::Request req;
+	req.pattern.pattern_width                 = getParam("pattern_width", 3);
+	req.pattern.pattern_height                = getParam("pattern_height", 9);
+	req.pattern.pattern_distance              = getParam("pattern_distance", 0.04);
+	req.pattern.neighbor_distance             = getParam("neighbor_distance", 0.01);
+	req.pattern.valid_pattern_ratio_threshold = getParam("valid_pattern_ratio_threshold", 0.7);
 	req.tag_frame                     = getParam<std::string>("tag_frame", "calibration_tag");
 	req.target_frame                  = getParam<std::string>("target_frame", "calibration_tag");
 	std::string camera_frame          = getParam<std::string>("camera_frame", "camera_link");
@@ -93,7 +95,7 @@ void CameraPoseCalibrationNode::parseInput() {
 	pcl::toROSMsg(*cloud, req.cloud);
 
 	// call the service
-	dr_msgs::Calibrate::Response res;
+	camera_pose_calibration::Calibrate::Response res;
 	onCalibrate(req, res);
 }
 
@@ -156,13 +158,13 @@ void CameraPoseCalibrationNode::onTfTimeout(ros::TimerEvent const &) {
 	}
 }
 
-bool CameraPoseCalibrationNode::onCalibrateTopic(dr_msgs::CalibrateTopic::Request & req, dr_msgs::CalibrateTopic::Response & res) {
+bool CameraPoseCalibrationNode::onCalibrateTopic(camera_pose_calibration::CalibrateTopic::Request & req, camera_pose_calibration::CalibrateTopic::Response & res) {
 	// Use a specific callback queue for the data topics.
 	ros::CallbackQueue queue;
 
 	// Synchronize image and point cloud from topic
-	message_filters::Subscriber<sensor_msgs::Image> image_sub(node_handle_, req.image_topic, 1, ros::TransportHints(), &queue);
-	message_filters::Subscriber<sensor_msgs::PointCloud2> cloud_sub(node_handle_, req.cloud_topic, 1, ros::TransportHints(), &queue);
+	message_filters::Subscriber<sensor_msgs::Image> image_sub(node_handle_, image_topic, 1, ros::TransportHints(), &queue);
+	message_filters::Subscriber<sensor_msgs::PointCloud2> cloud_sub(node_handle_, cloud_topic, 1, ros::TransportHints(), &queue);
 	message_filters::TimeSynchronizer<sensor_msgs::Image, sensor_msgs::PointCloud2> sync(image_sub, cloud_sub, 10);
 
 	using InputData = std::tuple<sensor_msgs::Image::ConstPtr, sensor_msgs::PointCloud2::ConstPtr>;
@@ -185,8 +187,8 @@ bool CameraPoseCalibrationNode::onCalibrateTopic(dr_msgs::CalibrateTopic::Reques
 		if (future.wait_for(std::chrono::milliseconds(100)) == std::future_status::ready) break;
 	}
 
-	dr_msgs::Calibrate::Request calibrate_request;
-	dr_msgs::Calibrate::Response calibrate_response;
+	camera_pose_calibration::Calibrate::Request calibrate_request;
+	camera_pose_calibration::Calibrate::Response calibrate_response;
 
 	// Stop the spinner and copy the result to the request.
 	spinner.stop();
@@ -200,15 +202,11 @@ bool CameraPoseCalibrationNode::onCalibrateTopic(dr_msgs::CalibrateTopic::Reques
 	}
 
 	// Get all other calibration information from the service call request
-	calibrate_request.pattern_width                 = req.pattern_width;
-	calibrate_request.pattern_height                = req.pattern_height;
-	calibrate_request.pattern_distance              = req.pattern_distance;
-	calibrate_request.neighbor_distance             = req.neighbor_distance;
-	calibrate_request.valid_pattern_ratio_threshold = req.valid_pattern_ratio_threshold;
 	calibrate_request.tag_frame                     = req.tag_frame;
 	calibrate_request.target_frame                  = req.target_frame;
 	calibrate_request.point_cloud_scale_x           = req.point_cloud_scale_x;
 	calibrate_request.point_cloud_scale_y           = req.point_cloud_scale_y;
+	calibrate_request.pattern                       = req.pattern;
 
 	if (!onCalibrate(calibrate_request, calibrate_response)) {
 		return false;
@@ -220,7 +218,7 @@ bool CameraPoseCalibrationNode::onCalibrateTopic(dr_msgs::CalibrateTopic::Reques
 
 
 /// Calibrates the camera given the information in the request.
-bool CameraPoseCalibrationNode::onCalibrate(dr_msgs::Calibrate::Request & req, dr_msgs::Calibrate::Response & res) {
+bool CameraPoseCalibrationNode::onCalibrate(camera_pose_calibration::Calibrate::Request & req, camera_pose_calibration::Calibrate::Response & res) {
 	DR_INFO("Received calibration request from '" << req.cloud.header.frame_id << "' to '" << req.target_frame << "'.");
 
 	// extract image
@@ -251,11 +249,11 @@ bool CameraPoseCalibrationNode::onCalibrate(dr_msgs::Calibrate::Request & req, d
 		camera_to_tag = dr::findCalibrationIsometry(
 			image,
 			cloud,
-			req.pattern_width,
-			req.pattern_height,
-			req.pattern_distance,
-			req.neighbor_distance,
-			req.valid_pattern_ratio_threshold,
+			req.pattern.pattern_width,
+			req.pattern.pattern_height,
+			req.pattern.pattern_distance,
+			req.pattern.neighbor_distance,
+			req.pattern.valid_pattern_ratio_threshold,
 			req.point_cloud_scale_x,
 			req.point_cloud_scale_y,
 			debug_information
@@ -294,7 +292,7 @@ bool CameraPoseCalibrationNode::onCalibrate(dr_msgs::Calibrate::Request & req, d
 
 	// clone image and draw detection
 	cv::Mat detected_pattern = image.clone();
-	cv::drawChessboardCorners(detected_pattern, cv::Size(req.pattern_width, req.pattern_height), cv::Mat(debug_information->image_points), true);
+	cv::drawChessboardCorners(detected_pattern, cv::Size(req.pattern.pattern_width, req.pattern.pattern_height), cv::Mat(debug_information->image_points), true);
 
 	// transform the target (model) to the target frame to verify a correct calibration
 	pcl::PointCloud<pcl::PointXYZ>::Ptr transformed_target_cloud(new pcl::PointCloud<pcl::PointXYZ>(*debug_information->target_cloud));
@@ -321,7 +319,7 @@ bool CameraPoseCalibrationNode::onCalibrate(dr_msgs::Calibrate::Request & req, d
 	debug_information->target_cloud->header.frame_id  = req.tag_frame;
 
 	// publish calibration plane
-	visualization_msgs::Marker calibration_plane = createCalibrationPlaneMarker(debug_information->projected_source_cloud, req.pattern_width, req.pattern_height);
+	visualization_msgs::Marker calibration_plane = createCalibrationPlaneMarker(debug_information->projected_source_cloud, req.pattern.pattern_width, req.pattern.pattern_height);
 	calibration_plane.header.stamp = now;
 	calibration_plane_marker_publisher.publish(calibration_plane);
 

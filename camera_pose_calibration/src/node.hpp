@@ -3,8 +3,8 @@
 #include <dr_util/node.hpp>
 #include <dr_opencv/opencv.hpp>
 
-#include <dr_msgs/Calibrate.h>
-#include <dr_msgs/CalibrateTopic.h>
+#include <camera_pose_calibration/Calibrate.h>
+#include <camera_pose_calibration/CalibrateTopic.h>
 #include <visualization_msgs/Marker.h>
 
 #include <pcl_ros/point_cloud.h>
@@ -69,6 +69,12 @@ protected:
 	/// Rate with which to publish transforms.
 	double publish_rate;
 
+	/// Topic to read image from
+	std::string image_topic;
+
+	/// Topic to read point cloud from
+	std::string cloud_topic;
+
 	/// Determines if we have calibrated (and thus should publish the transform).
 	bool calibrated;
 
@@ -82,10 +88,10 @@ protected:
 	void onTfTimeout(ros::TimerEvent const &);
 
 	/// Calibrates the camera given the image and point cloud by a ROS topic, and all other information in the request.
-	bool onCalibrateTopic(dr_msgs::CalibrateTopic::Request & req, dr_msgs::CalibrateTopic::Response & res);
+	bool onCalibrateTopic(camera_pose_calibration::CalibrateTopic::Request & req, camera_pose_calibration::CalibrateTopic::Response & res);
 
 	/// Calibrates the camera given the information in the request.
-	bool onCalibrate(dr_msgs::Calibrate::Request & req, dr_msgs::Calibrate::Response & res);
+	bool onCalibrate(camera_pose_calibration::Calibrate::Request & req, camera_pose_calibration::Calibrate::Response & res);
 };
 
 }
