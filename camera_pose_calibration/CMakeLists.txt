@@ -5,6 +5,7 @@ find_package(catkin REQUIRED COMPONENTS
 	roscpp
 	pcl_ros
 	cv_bridge
+	cmake_modules
 	eigen_conversions
 	sensor_msgs
 	image_transport
@@ -14,11 +15,11 @@ find_package(catkin REQUIRED COMPONENTS
 	nodelet
 	dr_base
 	dr_util
-	dr_pcl
 	dr_opencv
 	message_generation
 )
 
+find_package(Eigen REQUIRED)
 find_package(OpenCV REQUIRED)
 find_package(PCL REQUIRED)
 
@@ -41,6 +42,7 @@ catkin_package()
 
 dr_include_directories(
 	${catkin_INCLUDE_DIRS}
+	${Eigen_INCLUDE_DIRS}
 	${OpenCV_INCLUDE_DIRS}
 	${PCL_INCLUDE_DIRS}
 )
@@ -48,6 +50,7 @@ dr_include_directories(
 add_library(${PROJECT_NAME}_nodelet SHARED src/nodelet.cpp src/node.cpp src/camera_pose_calibration.cpp)
 target_link_libraries(${PROJECT_NAME}_nodelet
 	${catkin_LIBRARIES}
+	${Eigen_LIBRARIES}
 	${OpenCV_LIBRARIES}
 	${PCL_LIBRARIES}
 )

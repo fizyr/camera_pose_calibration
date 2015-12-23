@@ -1,15 +1,18 @@
 #include "camera_pose_calibration.hpp"
 
-#include <dr_pcl/pointcloud_tools.hpp>
-
 #include <dr_log/dr_log.hpp>
 
 #include <pcl/segmentation/sac_segmentation.h>
 #include <pcl/kdtree/kdtree_flann.h>
+#include <pcl/sample_consensus/method_types.h>
+#include <pcl/sample_consensus/model_types.h>
+#include <pcl/segmentation/sac_segmentation.h>
+#include <pcl/registration/transformation_estimation_svd.h>
+#include <pcl/filters/project_inliers.h>
 
-namespace dr {
+namespace camera_pose_calibration {
 
-pcl::ModelCoefficients::Ptr fitPointsToPlane(pcl::PointCloud<pcl::PointXYZ>::Ptr cloud) {
+pcl::ModelCoefficients::Ptr fitPointsToPlane(pcl::PointCloud<pcl::PointXYZ>::ConstPtr cloud) {
 	pcl::ModelCoefficients::Ptr coefficients(new pcl::ModelCoefficients);
 	pcl::PointIndices::Ptr inliers(new pcl::PointIndices);
 
@@ -32,6 +35,66 @@ pcl::ModelCoefficients::Ptr fitPointsToPlane(pcl::PointCloud<pcl::PointXYZ>::Ptr
 	}
 
 	return coefficients;
+}
+
+std::vector<size_t> findNan(pcl::PointCloud<pcl::PointXYZ> const & cloud) {
+	std::vector<size_t> nan_indices;
+	for (size_t i = 0; i < cloud.size(); i++) {
+		if (std::isnan(cloud.at(i).x) ||
+			std::isnan(cloud.at(i).y) ||
+			std::isnan(cloud.at(i).z)) {
+			nan_indices.push_back(i);
+		}
+	}
+	return nan_indices;
+}
+
+pcl::PointCloud<pcl::PointXYZ>::Ptr generateAsymmetricCircles(
+	double distance,
+	size_t pattern_height,
+	size_t pattern_width
+) {
+	pcl::PointCloud<pcl::PointXYZ>::Ptr cloud(new pcl::PointCloud<pcl::PointXYZ>);
+	for (size_t j = 0; j < pattern_height; j++) {
+		for (size_t i = 0; i < pattern_width; i++) {
+			pcl::PointXYZ point;
+			double offset = (j % 2 == 0 ? 0 : distance / 2);
+			point.x = j * 0.5 * distance;
+			point.y = i * distance + offset;
+			point.z = 0;
+			cloud->push_back(point);
+		}
+	}
+	return cloud;
+}
+
+void projectCloudOnPlane(
+	pcl::PointCloud<pcl::PointXYZ>::ConstPtr cloud,
+	pcl::PointCloud<pcl::PointXYZ>::Ptr cloud_projected,
+	pcl::ModelCoefficients::ConstPtr plane_coefficients
+) {
+	pcl::ProjectInliers<pcl::PointXYZ> proj;
+	proj.setModelType(pcl::SACMODEL_PLANE);
+	proj.setInputCloud(cloud);
+	proj.setModelCoefficients(plane_coefficients);
+	proj.filter(*cloud_projected);
+}
+
+void eraseIndices(std::vector<size_t> indices, pcl::PointCloud<pcl::PointXYZ> & cloud) {
+	// sort in descending order to keep indices matching the updated cloud
+	std::sort(indices.begin(), indices.end(), std::greater<size_t>());
+	for (size_t i = 0; i < indices.size(); i++) {
+		cloud.erase(cloud.begin() + indices.at(i));
+	}
+}
+
+Eigen::Isometry3d findIsometry(
+	pcl::PointCloud<pcl::PointXYZ>::Ptr source, pcl::PointCloud<pcl::PointXYZ>::Ptr target
+) {
+	Eigen::Matrix4f transformation;
+	pcl::registration::TransformationEstimationSVD<pcl::PointXYZ, pcl::PointXYZ> svd;
+	svd.estimateRigidTransformation(*source, *target, transformation);
+	return Eigen::Isometry3d(transformation.cast<double>());
 }
 
 Eigen::Isometry3d findCalibrationIsometry(
@@ -93,8 +156,7 @@ Eigen::Isometry3d findCalibrationIsometry(
 	}
 
 	// create target (expected) model
-	pcl::PointCloud<pcl::PointXYZ>::Ptr target_cloud(new pcl::PointCloud<pcl::PointXYZ>);
-	generateAcircles(target_cloud, pattern_distance, pattern_size.height, pattern_size.width);
+	pcl::PointCloud<pcl::PointXYZ>::Ptr target_cloud = generateAsymmetricCircles(pattern_distance, pattern_size.height, pattern_size.width);
 
 	if (debug_information) {
 		debug_information->source_cloud = source_cloud;

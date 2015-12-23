@@ -243,10 +243,10 @@ bool CameraPoseCalibrationNode::onCalibrate(camera_pose_calibration::Calibrate::
 	if (req.point_cloud_scale_y == 0) req.point_cloud_scale_y = 1;
 
 	// find calibration plate in image
-	std::shared_ptr<dr::CalibrationInformation> debug_information(new dr::CalibrationInformation);
+	std::shared_ptr<camera_pose_calibration::CalibrationInformation> debug_information(new camera_pose_calibration::CalibrationInformation);
 	Eigen::Isometry3d camera_to_tag;
 	try {
-		camera_to_tag = dr::findCalibrationIsometry(
+		camera_to_tag = camera_pose_calibration::findCalibrationIsometry(
 			image,
 			cloud,
 			req.pattern.pattern_width,

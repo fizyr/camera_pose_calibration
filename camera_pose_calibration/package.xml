@@ -17,7 +17,6 @@
 	<depend>cv_bridge</depend>
 	<depend>dr_base</depend>
 	<depend>dr_opencv</depend>
-	<depend>dr_pcl</depend>
 	<depend>dr_util</depend>
 	<depend>eigen_conversions</depend>
 	<depend>image_transport</depend>
