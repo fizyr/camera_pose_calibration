@@ -1,10 +1,10 @@
 #pragma once
 
+#include <opencv2/opencv.hpp>
+
 #include <pcl/point_cloud.h>
 #include <pcl/point_types.h>
 #include <pcl/ModelCoefficients.h>
-
-#include <dr_opencv/opencv.hpp>
 
 #include <Eigen/Dense>
 #include <Eigen/Geometry>

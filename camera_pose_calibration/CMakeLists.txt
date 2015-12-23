@@ -15,7 +15,6 @@ find_package(catkin REQUIRED COMPONENTS
 	nodelet
 	dr_base
 	dr_util
-	dr_opencv
 	message_generation
 )
 

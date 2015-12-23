@@ -1,7 +1,7 @@
 #include "camera_pose_calibration.hpp"
 
+#include <opencv2/opencv.hpp>
 #include <dr_util/node.hpp>
-#include <dr_opencv/opencv.hpp>
 
 #include <camera_pose_calibration/Calibrate.h>
 #include <camera_pose_calibration/CalibrateTopic.h>

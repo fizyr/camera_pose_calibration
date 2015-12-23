@@ -1,6 +1,6 @@
 #include "node.hpp"
 
-#include <dr_opencv/opencv.hpp>
+#include <opencv2/opencv.hpp>
 
 #include <pcl/io/pcd_io.h>
 #include <pcl_ros/point_cloud.h>
