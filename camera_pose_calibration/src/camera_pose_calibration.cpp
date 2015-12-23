@@ -1,7 +1,5 @@
 #include "camera_pose_calibration.hpp"
 
-#include <dr_log/dr_log.hpp>
-
 #include <pcl/segmentation/sac_segmentation.h>
 #include <pcl/kdtree/kdtree_flann.h>
 #include <pcl/sample_consensus/method_types.h>

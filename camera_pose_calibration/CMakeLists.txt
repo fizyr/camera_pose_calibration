@@ -14,7 +14,6 @@ find_package(catkin REQUIRED COMPONENTS
 	visualization_msgs
 	nodelet
 	dr_base
-	dr_util
 	message_generation
 )
 

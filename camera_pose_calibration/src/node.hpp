@@ -1,7 +1,6 @@
 #include "camera_pose_calibration.hpp"
 
 #include <opencv2/opencv.hpp>
-#include <dr_util/node.hpp>
 
 #include <camera_pose_calibration/Calibrate.h>
 #include <camera_pose_calibration/CalibrateTopic.h>
@@ -16,11 +15,14 @@
 
 namespace camera_pose_calibration {
 
-class CameraPoseCalibrationNode : public dr::Node {
+class CameraPoseCalibrationNode {
 public:
 	CameraPoseCalibrationNode();
 
 protected:
+	/// Node handle
+	ros::NodeHandle node_handle;
+
 	/// Image transport object used for publishing images.
 	image_transport::ImageTransport image_transport;
 
@@ -68,12 +70,6 @@ protected:
 
 	/// Rate with which to publish transforms.
 	double publish_rate;
-
-	/// Topic to read image from
-	std::string image_topic;
-
-	/// Topic to read point cloud from
-	std::string cloud_topic;
 
 	/// Determines if we have calibrated (and thus should publish the transform).
 	bool calibrated;

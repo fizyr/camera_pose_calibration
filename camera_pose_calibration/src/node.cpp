@@ -21,32 +21,43 @@
 
 namespace camera_pose_calibration {
 
-using namespace dr;
+namespace {
+	template<typename T>
+	T getParam(ros::NodeHandle & node, std::string const & name, T const & default_value) {
+		T result;
+		node.param(name, result, default_value);
+		return result;
+	}
+
+	/// Topic to read point cloud from.
+	constexpr char const * cloud_topic = "points_registered";
+
+	/// Topic to read image from.
+	constexpr char const * image_topic = "image_color";
+}
 
 CameraPoseCalibrationNode::CameraPoseCalibrationNode() :
-	image_transport(node_handle_),
+	image_transport(node_handle),
 	calibrated(false)
 {
 	// initialize ros communication
-	cloud_publisher                    = node_handle_.advertise<pcl::PointCloud<pcl::PointXYZ>>("cloud", 1, true);
-	target_cloud_publisher             = node_handle_.advertise<pcl::PointCloud<pcl::PointXYZ>>("target", 1, true);
-	transformed_target_cloud_publisher = node_handle_.advertise<pcl::PointCloud<pcl::PointXYZ>>("transformed_target", 1, true);
-	source_cloud_publisher             = node_handle_.advertise<pcl::PointCloud<pcl::PointXYZ>>("source", 1, true);
-	projected_source_cloud_publisher   = node_handle_.advertise<pcl::PointCloud<pcl::PointXYZ>>("projected_source", 1, true);
-	calibration_plane_marker_publisher = node_handle_.advertise<visualization_msgs::Marker>("calibration_plane", 1, true);
+	cloud_publisher                    = node_handle.advertise<pcl::PointCloud<pcl::PointXYZ>>("cloud", 1, true);
+	target_cloud_publisher             = node_handle.advertise<pcl::PointCloud<pcl::PointXYZ>>("target", 1, true);
+	transformed_target_cloud_publisher = node_handle.advertise<pcl::PointCloud<pcl::PointXYZ>>("transformed_target", 1, true);
+	source_cloud_publisher             = node_handle.advertise<pcl::PointCloud<pcl::PointXYZ>>("source", 1, true);
+	projected_source_cloud_publisher   = node_handle.advertise<pcl::PointCloud<pcl::PointXYZ>>("projected_source", 1, true);
+	calibration_plane_marker_publisher = node_handle.advertise<visualization_msgs::Marker>("calibration_plane", 1, true);
 	detected_pattern_publisher         = image_transport.advertise("detected_pattern", 1, true);
 
-	calibrate_server       = node_handle_.advertiseService("calibrate",       &CameraPoseCalibrationNode::onCalibrate,      this);
-	calibrate_server_topic = node_handle_.advertiseService("calibrate_topic", &CameraPoseCalibrationNode::onCalibrateTopic, this);
+	calibrate_server       = node_handle.advertiseService("calibrate",       &CameraPoseCalibrationNode::onCalibrate,      this);
+	calibrate_server_topic = node_handle.advertiseService("calibrate_topic", &CameraPoseCalibrationNode::onCalibrateTopic, this);
 
 	// parameters
-	publish_transform = getParam("publish_transform", false, false);
-	publish_rate      = getParam("publish_rate", 1, false);
-	image_topic       = getParam<std::string>("image", "rgb/image_color");
-	cloud_topic       = getParam<std::string>("cloud", "depth_registered/points");
+	publish_transform = getParam(node_handle, "publish_transform", false);
+	publish_rate      = getParam(node_handle, "publish_rate", 1);
 
 	if (publish_transform) {
-		tf_timer = node_handle_.createTimer(publish_rate, &CameraPoseCalibrationNode::onTfTimeout, this);
+		tf_timer = node_handle.createTimer(publish_rate, &CameraPoseCalibrationNode::onTfTimeout, this);
 	}
 
 	parseInput();
@@ -55,37 +66,37 @@ CameraPoseCalibrationNode::CameraPoseCalibrationNode() :
 /// Parses ROS parameters and calls the calibration service.
 void CameraPoseCalibrationNode::parseInput() {
 	// no manual input, only through service calls
-	bool manual_input = getParam("manual", false);
+	bool manual_input = getParam(node_handle, "manual", false);
 	if (!manual_input) return;
 
 	// construct the request
 	camera_pose_calibration::Calibrate::Request req;
-	req.pattern.pattern_width                 = getParam("pattern_width", 3);
-	req.pattern.pattern_height                = getParam("pattern_height", 9);
-	req.pattern.pattern_distance              = getParam("pattern_distance", 0.04);
-	req.pattern.neighbor_distance             = getParam("neighbor_distance", 0.01);
-	req.pattern.valid_pattern_ratio_threshold = getParam("valid_pattern_ratio_threshold", 0.7);
-	req.tag_frame                     = getParam<std::string>("tag_frame", "calibration_tag");
-	req.target_frame                  = getParam<std::string>("target_frame", "calibration_tag");
-	std::string camera_frame          = getParam<std::string>("camera_frame", "camera_link");
+	req.pattern.pattern_width                 = getParam(node_handle,"pattern_width", 3);
+	req.pattern.pattern_height                = getParam(node_handle,"pattern_height", 9);
+	req.pattern.pattern_distance              = getParam(node_handle,"pattern_distance", 0.04);
+	req.pattern.neighbor_distance             = getParam(node_handle,"neighbor_distance", 0.01);
+	req.pattern.valid_pattern_ratio_threshold = getParam(node_handle,"valid_pattern_ratio_threshold", 0.7);
+	req.tag_frame                             = getParam<std::string>(node_handle,"tag_frame", "calibration_tag");
+	req.target_frame                          = getParam<std::string>(node_handle,"target_frame", "calibration_tag");
+	std::string camera_frame                  = getParam<std::string>(node_handle,"camera_frame", "camera_link");
 
 	// load the image
-	std::string image_path = getParam<std::string>("image_path", "intensity.png");
+	std::string image_path = getParam<std::string>(node_handle, "image_path", "intensity.png");
 	std_msgs::Header header;
 	header.frame_id = camera_frame;
 	cv_bridge::CvImage image_msg(header, sensor_msgs::image_encodings::BGR8, cv::imread(image_path));
 	if (!image_msg.image.data) {
-		DR_ERROR("Failed to read image from " << image_path << ".");
+		ROS_ERROR_STREAM("Failed to read image from " << image_path << ".");
 		return;
 	}
 
 	image_msg.toImageMsg(req.image);
 
 	// load the pointcloud
-	std::string cloud_path = getParam<std::string>("cloud_path", "cloud.pcd");
+	std::string cloud_path = getParam<std::string>(node_handle, "cloud_path", "cloud.pcd");
 	pcl::PointCloud<pcl::PointXYZ>::Ptr cloud(new pcl::PointCloud<pcl::PointXYZ>);
 	if (pcl::io::loadPCDFile(cloud_path, *cloud) == -1) {
-		DR_ERROR("Failed to read pointcloud " << cloud_path << ".");
+		ROS_ERROR_STREAM("Failed to read pointcloud " << cloud_path << ".");
 		return;
 	}
 
@@ -163,8 +174,8 @@ bool CameraPoseCalibrationNode::onCalibrateTopic(camera_pose_calibration::Calibr
 	ros::CallbackQueue queue;
 
 	// Synchronize image and point cloud from topic
-	message_filters::Subscriber<sensor_msgs::Image> image_sub(node_handle_, image_topic, 1, ros::TransportHints(), &queue);
-	message_filters::Subscriber<sensor_msgs::PointCloud2> cloud_sub(node_handle_, cloud_topic, 1, ros::TransportHints(), &queue);
+	message_filters::Subscriber<sensor_msgs::Image> image_sub(node_handle, image_topic, 1, ros::TransportHints(), &queue);
+	message_filters::Subscriber<sensor_msgs::PointCloud2> cloud_sub(node_handle, cloud_topic, 1, ros::TransportHints(), &queue);
 	message_filters::TimeSynchronizer<sensor_msgs::Image, sensor_msgs::PointCloud2> sync(image_sub, cloud_sub, 10);
 
 	using InputData = std::tuple<sensor_msgs::Image::ConstPtr, sensor_msgs::PointCloud2::ConstPtr>;
@@ -183,7 +194,7 @@ bool CameraPoseCalibrationNode::onCalibrateTopic(camera_pose_calibration::Calibr
 
 	// Wait for the future.
 	while (true) {
-		if (!node_handle_.ok()) return false;
+		if (!node_handle.ok()) return false;
 		if (future.wait_for(std::chrono::milliseconds(100)) == std::future_status::ready) break;
 	}
 
@@ -197,7 +208,7 @@ bool CameraPoseCalibrationNode::onCalibrateTopic(camera_pose_calibration::Calibr
 	calibrate_request.cloud = *std::get<1>(data);
 
 	if (calibrate_request.image.data.empty() || calibrate_request.cloud.data.empty()) {
-		DR_ERROR("No image and/or point cloud received.");
+		ROS_ERROR_STREAM("No image and/or point cloud received.");
 		return false;
 	}
 
@@ -219,14 +230,14 @@ bool CameraPoseCalibrationNode::onCalibrateTopic(camera_pose_calibration::Calibr
 
 /// Calibrates the camera given the information in the request.
 bool CameraPoseCalibrationNode::onCalibrate(camera_pose_calibration::Calibrate::Request & req, camera_pose_calibration::Calibrate::Response & res) {
-	DR_INFO("Received calibration request from '" << req.cloud.header.frame_id << "' to '" << req.target_frame << "'.");
+	ROS_INFO_STREAM("Received calibration request from '" << req.cloud.header.frame_id << "' to '" << req.target_frame << "'.");
 
 	// extract image
 	cv_bridge::CvImagePtr cv_ptr;
 	try {
 		cv_ptr = cv_bridge::toCvCopy(req.image, sensor_msgs::image_encodings::BGR8);
 	} catch (cv_bridge::Exception& e) {
-		DR_ERROR("Failed to convert sensor_msgs/Image to cv::Mat. Error: " << e.what());
+		ROS_ERROR_STREAM("Failed to convert sensor_msgs/Image to cv::Mat. Error: " << e.what());
 		return false;
 	}
 	cv::Mat image = cv_ptr->image;
@@ -235,7 +246,7 @@ bool CameraPoseCalibrationNode::onCalibrate(camera_pose_calibration::Calibrate::
 	pcl::PointCloud<pcl::PointXYZ>::Ptr cloud(new pcl::PointCloud<pcl::PointXYZ>);
 	pcl::fromROSMsg(req.cloud, *cloud);
 	if (req.cloud.header.frame_id == "") {
-		DR_ERROR("Found empty frame_id in given pointcloud.");
+		ROS_ERROR_STREAM("Found empty frame_id in given pointcloud.");
 		return false;
 	}
 
@@ -259,7 +270,7 @@ bool CameraPoseCalibrationNode::onCalibrate(camera_pose_calibration::Calibrate::
 			debug_information
 		);
 	} catch (std::exception const & e) {
-		DR_ERROR("Failed to find isometry. Error: " << e.what());
+		ROS_ERROR_STREAM("Failed to find isometry. Error: " << e.what());
 		detected_pattern_publisher.publish(cv_bridge::CvImage(std_msgs::Header(), "bgr8", image).toImageMsg());
 		return false;
 	}
@@ -275,14 +286,14 @@ bool CameraPoseCalibrationNode::onCalibrate(camera_pose_calibration::Calibrate::
 		try {
 			tf::StampedTransform transform;
 			if (!transform_listener.waitForTransform(req.target_frame, req.tag_frame, now, ros::Duration(1.0))) {
-				DR_ERROR("Failed to find transform from " << req.tag_frame << " to " << req.target_frame);
+				ROS_ERROR_STREAM("Failed to find transform from " << req.tag_frame << " to " << req.target_frame);
 				return false;
 			}
 			transform_listener.lookupTransform(req.target_frame, req.tag_frame, now, transform);
 
 			tf::transformTFToEigen(transform, tag_to_target);
 		} catch (tf::TransformException const & e) {
-			DR_ERROR("Failed to find transform. Error: " << e.what());
+			ROS_ERROR_STREAM("Failed to find transform. Error: " << e.what());
 			return false;
 		}
 	}
@@ -331,8 +342,8 @@ bool CameraPoseCalibrationNode::onCalibrate(camera_pose_calibration::Calibrate::
 	projected_source_cloud_publisher.publish(debug_information->projected_source_cloud);
 	detected_pattern_publisher.publish(cv_bridge::CvImage(std_msgs::Header(), "bgr8", detected_pattern).toImageMsg());
 
-	DR_INFO(cloud->header.frame_id << " to " << req.tag_frame << " :\n" << camera_to_tag.matrix() );
-	DR_INFO(cloud->header.frame_id << " to " << req.target_frame << " :\n" << camera_to_target.matrix() );
+	ROS_INFO_STREAM(cloud->header.frame_id << " to " << req.tag_frame << " :\n" << camera_to_tag.matrix() );
+	ROS_INFO_STREAM(cloud->header.frame_id << " to " << req.target_frame << " :\n" << camera_to_target.matrix() );
 
 	return true;
 }
