@@ -109,6 +109,9 @@ Eigen::Isometry3d findCalibrationIsometry(
 ) {
 	cv::Size pattern_size(pattern_width, pattern_height);
 
+	if (point_cloud_scale_x == 0) point_cloud_scale_x = 1;
+	if (point_cloud_scale_y == 0) point_cloud_scale_y = 1;
+
 	// find pattern
 	std::vector<cv::Point2f> image_points;
 	if (!cv::findCirclesGrid(image, pattern_size, image_points, cv::CALIB_CB_ASYMMETRIC_GRID)) {
