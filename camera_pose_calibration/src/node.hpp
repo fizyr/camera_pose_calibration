@@ -84,6 +84,18 @@ protected:
 	/// Called when the calibrated TF transforms should be republished.
 	void onTfTimeout(ros::TimerEvent const &);
 
+	/// Calibrates and publishes the tf and debug information
+	bool calibrate(
+		sensor_msgs::Image const & sensor_msgs_image,
+		sensor_msgs::PointCloud2 const & sensor_msgs_cloud,
+		std::string const & tag_frame,
+		std::string const & target_frame,
+		double const & point_cloud_scale_x,
+		double const & point_cloud_scale_y,
+		camera_pose_calibration::PatternParameters const & pattern,
+		geometry_msgs::Transform & transform
+	);
+
 	/// Calibrates the camera given the image and point cloud by a ROS topic, and all other information in the request.
 	bool onCalibrateFile(camera_pose_calibration::CalibrateFile::Request & req, camera_pose_calibration::CalibrateFile::Response & res);
 

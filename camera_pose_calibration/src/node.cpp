@@ -49,7 +49,7 @@ CameraPoseCalibrationNode::CameraPoseCalibrationNode() :
 	calibration_plane_marker_publisher = node_handle.advertise<visualization_msgs::Marker>("calibration_plane", 1, true);
 	detected_pattern_publisher         = image_transport.advertise("detected_pattern", 1, true);
 
-	calibrate_server       = node_handle.advertiseService("calibrate_call",  &CameraPoseCalibrationNode::onCalibrateCall,      this);
+	calibrate_server       = node_handle.advertiseService("calibrate_call",  &CameraPoseCalibrationNode::onCalibrateCall,  this);
 	calibrate_server_topic = node_handle.advertiseService("calibrate_topic", &CameraPoseCalibrationNode::onCalibrateTopic, this);
 	calibrate_server_topic = node_handle.advertiseService("calibrate_file",  &CameraPoseCalibrationNode::onCalibrateFile,  this);
 
@@ -121,49 +121,173 @@ void CameraPoseCalibrationNode::onTfTimeout(ros::TimerEvent const &) {
 	}
 }
 
-bool CameraPoseCalibrationNode::onCalibrateFile(camera_pose_calibration::CalibrateFile::Request & req_file, camera_pose_calibration::CalibrateFile::Response & res_file) {
-	// construct the request
-	camera_pose_calibration::CalibrateCall::Request req;
-	req.pattern                               = req_file.pattern;
-	req.tag_frame                             = req_file.tag_frame;
-	req.target_frame                          = req_file.target_frame;
-	std::string camera_frame                  = req_file.camera_frame;
+bool CameraPoseCalibrationNode::calibrate(
+	sensor_msgs::Image const & sensor_msgs_image,
+	sensor_msgs::PointCloud2 const & sensor_msgs_cloud,
+	std::string const & tag_frame,
+	std::string const & target_frame,
+	double const & point_cloud_scale_x,
+	double const & point_cloud_scale_y,
+	camera_pose_calibration::PatternParameters const & pattern,
+	geometry_msgs::Transform & transform
+) {
+	// Implement calibrate function here{
+	ROS_INFO_STREAM("Received calibration request from '" << sensor_msgs_cloud.header.frame_id << "' to '" << target_frame << "'.");
 
+	// extract image
+	cv_bridge::CvImagePtr cv_ptr;
+	try {
+		cv_ptr = cv_bridge::toCvCopy(sensor_msgs_image, sensor_msgs::image_encodings::BGR8);
+	} catch (cv_bridge::Exception& e) {
+		ROS_ERROR_STREAM("Failed to convert sensor_msgs/Image to cv::Mat. Error: " << e.what());
+		return false;
+	}
+	cv::Mat image = cv_ptr->image;
+
+	// extract pointcloud
+	pcl::PointCloud<pcl::PointXYZ>::Ptr cloud(new pcl::PointCloud<pcl::PointXYZ>);
+	pcl::fromROSMsg(sensor_msgs_cloud, *cloud);
+	if (sensor_msgs_cloud.header.frame_id == "") {
+		ROS_ERROR_STREAM("Found empty frame_id in given pointcloud.");
+		return false;
+	}
+
+	// find calibration plate in image, and find isometry from camera to calibration plate
+	std::shared_ptr<camera_pose_calibration::CalibrationInformation> debug_information(new camera_pose_calibration::CalibrationInformation);
+	Eigen::Isometry3d camera_to_tag;
+	try {
+		camera_to_tag = camera_pose_calibration::findCalibrationIsometry(
+			image,
+			cloud,
+			pattern.pattern_width,
+			pattern.pattern_height,
+			pattern.pattern_distance,
+			pattern.neighbor_distance,
+			pattern.valid_pattern_ratio_threshold,
+			point_cloud_scale_x,
+			point_cloud_scale_y,
+			debug_information
+		);
+	} catch (std::exception const & e) {
+		ROS_ERROR_STREAM("Failed to find isometry. Error: " << e.what());
+		detected_pattern_publisher.publish(cv_bridge::CvImage(std_msgs::Header(), "bgr8", image).toImageMsg());
+		return false;
+	}
+
+	// get the current time for publishing stamps
+	ros::Time now = sensor_msgs_cloud.header.stamp;
+
+	// find transformation from tag frame to the frame to which we want to calibrate
+	Eigen::Isometry3d tag_to_target;
+	if (tag_frame == target_frame) {
+		tag_to_target = Eigen::Isometry3d::Identity();
+	} else {
+		try {
+			tf::StampedTransform transform;
+			if (!transform_listener.waitForTransform(target_frame, tag_frame, now, ros::Duration(1.0))) {
+				ROS_ERROR_STREAM("Failed to find transform from " << tag_frame << " to " << target_frame);
+				return false;
+			}
+			transform_listener.lookupTransform(target_frame, tag_frame, now, transform);
+
+			tf::transformTFToEigen(transform, tag_to_target);
+		} catch (tf::TransformException const & e) {
+			ROS_ERROR_STREAM("Failed to find transform. Error: " << e.what());
+			return false;
+		}
+	}
+
+	// transform for target to camera frame
+	Eigen::Isometry3d camera_to_target = tag_to_target * camera_to_tag;
+
+	// clone image and draw detection
+	cv::Mat detected_pattern = image.clone();
+	cv::drawChessboardCorners(detected_pattern, cv::Size(pattern.pattern_width, pattern.pattern_height), cv::Mat(debug_information->image_points), true);
+
+	// transform the target (model) to the target frame to verify a correct calibration
+	pcl::PointCloud<pcl::PointXYZ>::Ptr transformed_target_cloud(new pcl::PointCloud<pcl::PointXYZ>(*debug_information->target_cloud));
+	pcl::transformPointCloud(*debug_information->target_cloud, *transformed_target_cloud, Eigen::Affine3d(camera_to_tag.inverse()));
+
+	// copy result to response
+	tf::transformEigenToMsg(camera_to_target, transform);
+
+	// publish result if necessary
+	calibrated = true;
+	tf::Transform tf_camera_to_target;
+	transformEigenToTF(camera_to_target, tf_camera_to_target);
+	calibration_transform = tf::StampedTransform(tf_camera_to_target, now, target_frame, cloud->header.frame_id);
+	if (publish_transform) {
+		transform_broadcaster.sendTransform(calibration_transform);
+	}
+
+	// copy headers to publishing pointclouds
+	pcl_conversions::toPCL(now, cloud->header.stamp);
+	transformed_target_cloud->header                  = cloud->header;
+	debug_information->projected_source_cloud->header = cloud->header;
+	debug_information->source_cloud->header           = cloud->header;
+	debug_information->target_cloud->header           = cloud->header;
+	debug_information->target_cloud->header.frame_id  = tag_frame;
+
+	// publish calibration plane
+	visualization_msgs::Marker calibration_plane = createCalibrationPlaneMarker(debug_information->projected_source_cloud, pattern.pattern_width, pattern.pattern_height);
+	calibration_plane.header.stamp = now;
+	calibration_plane_marker_publisher.publish(calibration_plane);
+
+	// publish the debug information
+	cloud_publisher.publish(cloud);
+	target_cloud_publisher.publish(debug_information->target_cloud);
+	transformed_target_cloud_publisher.publish(transformed_target_cloud);
+	source_cloud_publisher.publish(debug_information->source_cloud);
+	projected_source_cloud_publisher.publish(debug_information->projected_source_cloud);
+	detected_pattern_publisher.publish(cv_bridge::CvImage(std_msgs::Header(), "bgr8", detected_pattern).toImageMsg());
+
+	ROS_INFO_STREAM(cloud->header.frame_id << " to " << tag_frame << " :\n" << camera_to_tag.matrix() );
+	ROS_INFO_STREAM(cloud->header.frame_id << " to " << target_frame << " :\n" << camera_to_target.matrix() );
+
+	return true;
+}
+
+bool CameraPoseCalibrationNode::onCalibrateFile(camera_pose_calibration::CalibrateFile::Request & req, camera_pose_calibration::CalibrateFile::Response & res) {
 	// load the image
-	std::string image_path = req_file.image;
+	std::string image_path = req.image;
 	std_msgs::Header header;
-	header.frame_id = camera_frame;
+	header.frame_id = req.camera_frame;
 	cv_bridge::CvImage image_msg(header, sensor_msgs::image_encodings::BGR8, cv::imread(image_path));
 	if (!image_msg.image.data) {
 		ROS_ERROR_STREAM("Failed to read image from " << image_path << ".");
 		return false;
 	}
 
-	image_msg.toImageMsg(req.image);
+	sensor_msgs::Image image;
+	image_msg.toImageMsg(image);
 
 	// load the pointcloud
-	std::string cloud_path = req_file.cloud;
-	pcl::PointCloud<pcl::PointXYZ>::Ptr cloud(new pcl::PointCloud<pcl::PointXYZ>);
-	if (pcl::io::loadPCDFile(cloud_path, *cloud) == -1) {
+	std::string cloud_path = req.cloud;
+	pcl::PointCloud<pcl::PointXYZ>::Ptr pcl_cloud(new pcl::PointCloud<pcl::PointXYZ>);
+	if (pcl::io::loadPCDFile(cloud_path, *pcl_cloud) == -1) {
 		ROS_ERROR_STREAM("Failed to read pointcloud " << cloud_path << ".");
 		return false;
 	}
 
-	cloud->header.frame_id   = camera_frame;
-	pcl_conversions::toPCL(ros::Time::now(), cloud->header.stamp);
+	pcl_cloud->header.frame_id   = req.camera_frame;
+	pcl_conversions::toPCL(ros::Time::now(), pcl_cloud->header.stamp);
 
-	pcl::toROSMsg(*cloud, req.cloud);
+	sensor_msgs::PointCloud2 cloud;
+	pcl::toROSMsg(*pcl_cloud, cloud);
 
-	// call the service
-	camera_pose_calibration::CalibrateCall::Response res;
-	onCalibrateCall(req, res);
-
-	res_file.transform = res.transform;
-
-	return true;
+	return calibrate(
+		image,
+		cloud,
+		req.tag_frame,
+		req.target_frame,
+		req.point_cloud_scale_x,
+		req.point_cloud_scale_y,
+		req.pattern,
+		res.transform
+	);
 }
 
-bool CameraPoseCalibrationNode::onCalibrateTopic(camera_pose_calibration::CalibrateTopic::Request & req_topic, camera_pose_calibration::CalibrateTopic::Response & res_topic) {
+bool CameraPoseCalibrationNode::onCalibrateTopic(camera_pose_calibration::CalibrateTopic::Request & req, camera_pose_calibration::CalibrateTopic::Response & res) {
 	// Use a specific callback queue for the data topics.
 	ros::CallbackQueue queue;
 
@@ -192,150 +316,42 @@ bool CameraPoseCalibrationNode::onCalibrateTopic(camera_pose_calibration::Calibr
 		if (future.wait_for(std::chrono::milliseconds(100)) == std::future_status::ready) break;
 	}
 
-	camera_pose_calibration::CalibrateCall::Request calibrate_request;
-	camera_pose_calibration::CalibrateCall::Response calibrate_response;
-
 	// Stop the spinner and copy the result to the request.
 	spinner.stop();
 	InputData data = future.get();
-	calibrate_request.image = *std::get<0>(data);
-	calibrate_request.cloud = *std::get<1>(data);
+	sensor_msgs::Image image       = *std::get<0>(data);
+	sensor_msgs::PointCloud2 cloud = *std::get<1>(data);
 
-	if (calibrate_request.image.data.empty() || calibrate_request.cloud.data.empty()) {
+	if (image.data.empty() || cloud.data.empty()) {
 		ROS_ERROR_STREAM("No image and/or point cloud received.");
 		return false;
 	}
 
 	// Get all other calibration information from the service call request
-	calibrate_request.tag_frame                     = req_topic.tag_frame;
-	calibrate_request.target_frame                  = req_topic.target_frame;
-	calibrate_request.point_cloud_scale_x           = req_topic.point_cloud_scale_x;
-	calibrate_request.point_cloud_scale_y           = req_topic.point_cloud_scale_y;
-	calibrate_request.pattern                       = req_topic.pattern;
-
-	if (!onCalibrateCall(calibrate_request, calibrate_response)) {
-		return false;
-	}
-
-	res_topic.transform = calibrate_response.transform;
-	return true;
+	return calibrate(
+		image,
+		cloud,
+		req.tag_frame,
+		req.target_frame,
+		req.point_cloud_scale_x,
+		req.point_cloud_scale_y,
+		req.pattern,
+		res.transform
+	);
 }
 
 /// Calibrates the camera given the information in the request.
 bool CameraPoseCalibrationNode::onCalibrateCall(camera_pose_calibration::CalibrateCall::Request & req, camera_pose_calibration::CalibrateCall::Response & res) {
-	ROS_INFO_STREAM("Received calibration request from '" << req.cloud.header.frame_id << "' to '" << req.target_frame << "'.");
-
-	// extract image
-	cv_bridge::CvImagePtr cv_ptr;
-	try {
-		cv_ptr = cv_bridge::toCvCopy(req.image, sensor_msgs::image_encodings::BGR8);
-	} catch (cv_bridge::Exception& e) {
-		ROS_ERROR_STREAM("Failed to convert sensor_msgs/Image to cv::Mat. Error: " << e.what());
-		return false;
-	}
-	cv::Mat image = cv_ptr->image;
-
-	// extract pointcloud
-	pcl::PointCloud<pcl::PointXYZ>::Ptr cloud(new pcl::PointCloud<pcl::PointXYZ>);
-	pcl::fromROSMsg(req.cloud, *cloud);
-	if (req.cloud.header.frame_id == "") {
-		ROS_ERROR_STREAM("Found empty frame_id in given pointcloud.");
-		return false;
-	}
-
-	// find calibration plate in image, and find isometry from camera to calibration plate
-	std::shared_ptr<camera_pose_calibration::CalibrationInformation> debug_information(new camera_pose_calibration::CalibrationInformation);
-	Eigen::Isometry3d camera_to_tag;
-	try {
-		camera_to_tag = camera_pose_calibration::findCalibrationIsometry(
-			image,
-			cloud,
-			req.pattern.pattern_width,
-			req.pattern.pattern_height,
-			req.pattern.pattern_distance,
-			req.pattern.neighbor_distance,
-			req.pattern.valid_pattern_ratio_threshold,
-			req.point_cloud_scale_x,
-			req.point_cloud_scale_y,
-			debug_information
-		);
-	} catch (std::exception const & e) {
-		ROS_ERROR_STREAM("Failed to find isometry. Error: " << e.what());
-		detected_pattern_publisher.publish(cv_bridge::CvImage(std_msgs::Header(), "bgr8", image).toImageMsg());
-		return false;
-	}
-
-	// get the current time for publishing stamps
-	ros::Time now = req.cloud.header.stamp;
-
-	// find transformation from tag frame to the frame to which we want to calibrate
-	Eigen::Isometry3d tag_to_target;
-	if (req.tag_frame == req.target_frame) {
-		tag_to_target = Eigen::Isometry3d::Identity();
-	} else {
-		try {
-			tf::StampedTransform transform;
-			if (!transform_listener.waitForTransform(req.target_frame, req.tag_frame, now, ros::Duration(1.0))) {
-				ROS_ERROR_STREAM("Failed to find transform from " << req.tag_frame << " to " << req.target_frame);
-				return false;
-			}
-			transform_listener.lookupTransform(req.target_frame, req.tag_frame, now, transform);
-
-			tf::transformTFToEigen(transform, tag_to_target);
-		} catch (tf::TransformException const & e) {
-			ROS_ERROR_STREAM("Failed to find transform. Error: " << e.what());
-			return false;
-		}
-	}
-
-	// transform for target to camera frame
-	Eigen::Isometry3d camera_to_target = tag_to_target * camera_to_tag;
-
-	// clone image and draw detection
-	cv::Mat detected_pattern = image.clone();
-	cv::drawChessboardCorners(detected_pattern, cv::Size(req.pattern.pattern_width, req.pattern.pattern_height), cv::Mat(debug_information->image_points), true);
-
-	// transform the target (model) to the target frame to verify a correct calibration
-	pcl::PointCloud<pcl::PointXYZ>::Ptr transformed_target_cloud(new pcl::PointCloud<pcl::PointXYZ>(*debug_information->target_cloud));
-	pcl::transformPointCloud(*debug_information->target_cloud, *transformed_target_cloud, Eigen::Affine3d(camera_to_tag.inverse()));
-
-	// copy result to response
-	tf::transformEigenToMsg(camera_to_target, res.transform);
-
-	// publish result if necessary
-	calibrated = true;
-	tf::Transform tf_camera_to_target;
-	transformEigenToTF(camera_to_target, tf_camera_to_target);
-	calibration_transform = tf::StampedTransform(tf_camera_to_target, now, req.target_frame, cloud->header.frame_id);
-	if (publish_transform) {
-		transform_broadcaster.sendTransform(calibration_transform);
-	}
-
-	// copy headers to publishing pointclouds
-	pcl_conversions::toPCL(now, cloud->header.stamp);
-	transformed_target_cloud->header                  = cloud->header;
-	debug_information->projected_source_cloud->header = cloud->header;
-	debug_information->source_cloud->header           = cloud->header;
-	debug_information->target_cloud->header           = cloud->header;
-	debug_information->target_cloud->header.frame_id  = req.tag_frame;
-
-	// publish calibration plane
-	visualization_msgs::Marker calibration_plane = createCalibrationPlaneMarker(debug_information->projected_source_cloud, req.pattern.pattern_width, req.pattern.pattern_height);
-	calibration_plane.header.stamp = now;
-	calibration_plane_marker_publisher.publish(calibration_plane);
-
-	// publish the debug information
-	cloud_publisher.publish(cloud);
-	target_cloud_publisher.publish(debug_information->target_cloud);
-	transformed_target_cloud_publisher.publish(transformed_target_cloud);
-	source_cloud_publisher.publish(debug_information->source_cloud);
-	projected_source_cloud_publisher.publish(debug_information->projected_source_cloud);
-	detected_pattern_publisher.publish(cv_bridge::CvImage(std_msgs::Header(), "bgr8", detected_pattern).toImageMsg());
-
-	ROS_INFO_STREAM(cloud->header.frame_id << " to " << req.tag_frame << " :\n" << camera_to_tag.matrix() );
-	ROS_INFO_STREAM(cloud->header.frame_id << " to " << req.target_frame << " :\n" << camera_to_target.matrix() );
-
-	return true;
+	return calibrate(
+		req.image,
+		req.cloud,
+		req.tag_frame,
+		req.target_frame,
+		req.point_cloud_scale_x,
+		req.point_cloud_scale_y,
+		req.pattern,
+		res.transform
+	);
 }
 
 
