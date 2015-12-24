@@ -135,7 +135,6 @@ Eigen::Isometry3d findCalibrationIsometry(
 		if (std::isnan(average.x) || std::isnan(average.y) || std::isnan(average.z)) {
 			source_cloud->push_back(average);
 			continue;
-			//throw std::runtime_error("Found invalid real world point (NaN) for calibration pattern point.");
 		}
 
 		// find neighboring pixels and average them

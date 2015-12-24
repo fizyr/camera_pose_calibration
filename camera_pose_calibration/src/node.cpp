@@ -121,6 +121,48 @@ void CameraPoseCalibrationNode::onTfTimeout(ros::TimerEvent const &) {
 	}
 }
 
+bool CameraPoseCalibrationNode::onCalibrateFile(camera_pose_calibration::CalibrateFile::Request & req_file, camera_pose_calibration::CalibrateFile::Response & res_file) {
+	// construct the request
+	camera_pose_calibration::CalibrateCall::Request req;
+	req.pattern                               = req_file.pattern;
+	req.tag_frame                             = req_file.tag_frame;
+	req.target_frame                          = req_file.target_frame;
+	std::string camera_frame                  = req_file.camera_frame;
+
+	// load the image
+	std::string image_path = req_file.image;
+	std_msgs::Header header;
+	header.frame_id = camera_frame;
+	cv_bridge::CvImage image_msg(header, sensor_msgs::image_encodings::BGR8, cv::imread(image_path));
+	if (!image_msg.image.data) {
+		ROS_ERROR_STREAM("Failed to read image from " << image_path << ".");
+		return false;
+	}
+
+	image_msg.toImageMsg(req.image);
+
+	// load the pointcloud
+	std::string cloud_path = req_file.cloud;
+	pcl::PointCloud<pcl::PointXYZ>::Ptr cloud(new pcl::PointCloud<pcl::PointXYZ>);
+	if (pcl::io::loadPCDFile(cloud_path, *cloud) == -1) {
+		ROS_ERROR_STREAM("Failed to read pointcloud " << cloud_path << ".");
+		return false;
+	}
+
+	cloud->header.frame_id   = camera_frame;
+	pcl_conversions::toPCL(ros::Time::now(), cloud->header.stamp);
+
+	pcl::toROSMsg(*cloud, req.cloud);
+
+	// call the service
+	camera_pose_calibration::CalibrateCall::Response res;
+	onCalibrateCall(req, res);
+
+	res_file.transform = res.transform;
+
+	return true;
+}
+
 bool CameraPoseCalibrationNode::onCalibrateTopic(camera_pose_calibration::CalibrateTopic::Request & req_topic, camera_pose_calibration::CalibrateTopic::Response & res_topic) {
 	// Use a specific callback queue for the data topics.
 	ros::CallbackQueue queue;
@@ -179,48 +221,6 @@ bool CameraPoseCalibrationNode::onCalibrateTopic(camera_pose_calibration::Calibr
 	return true;
 }
 
-bool CameraPoseCalibrationNode::onCalibrateFile(camera_pose_calibration::CalibrateFile::Request & req_file, camera_pose_calibration::CalibrateFile::Response & res_file) {
-	// construct the request
-	camera_pose_calibration::CalibrateCall::Request req;
-	req.pattern                               = req_file.pattern;
-	req.tag_frame                             = req_file.tag_frame;
-	req.target_frame                          = req_file.target_frame;
-	std::string camera_frame                  = req_file.camera_frame;
-
-	// load the image
-	std::string image_path = getParam<std::string>(node_handle, "image_path", "intensity.png");
-	std_msgs::Header header;
-	header.frame_id = camera_frame;
-	cv_bridge::CvImage image_msg(header, sensor_msgs::image_encodings::BGR8, cv::imread(image_path));
-	if (!image_msg.image.data) {
-		ROS_ERROR_STREAM("Failed to read image from " << image_path << ".");
-		return false;
-	}
-
-	image_msg.toImageMsg(req.image);
-
-	// load the pointcloud
-	std::string cloud_path = getParam<std::string>(node_handle, "cloud_path", "cloud.pcd");
-	pcl::PointCloud<pcl::PointXYZ>::Ptr cloud(new pcl::PointCloud<pcl::PointXYZ>);
-	if (pcl::io::loadPCDFile(cloud_path, *cloud) == -1) {
-		ROS_ERROR_STREAM("Failed to read pointcloud " << cloud_path << ".");
-		return false;
-	}
-
-	cloud->header.frame_id   = camera_frame;
-	pcl_conversions::toPCL(ros::Time::now(), cloud->header.stamp);
-
-	pcl::toROSMsg(*cloud, req.cloud);
-
-	// call the service
-	camera_pose_calibration::CalibrateCall::Response res;
-	onCalibrateCall(req, res);
-
-	res_file.transform = res.transform;
-
-	return true;
-}
-
 /// Calibrates the camera given the information in the request.
 bool CameraPoseCalibrationNode::onCalibrateCall(camera_pose_calibration::CalibrateCall::Request & req, camera_pose_calibration::CalibrateCall::Response & res) {
 	ROS_INFO_STREAM("Received calibration request from '" << req.cloud.header.frame_id << "' to '" << req.target_frame << "'.");
@@ -243,7 +243,7 @@ bool CameraPoseCalibrationNode::onCalibrateCall(camera_pose_calibration::Calibra
 		return false;
 	}
 
-	// find calibration plate in image
+	// find calibration plate in image, and find isometry from camera to calibration plate
 	std::shared_ptr<camera_pose_calibration::CalibrationInformation> debug_information(new camera_pose_calibration::CalibrationInformation);
 	Eigen::Isometry3d camera_to_tag;
 	try {
