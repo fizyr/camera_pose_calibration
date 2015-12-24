@@ -1,0 +1,10 @@
+string image
+string cloud
+string camera_frame
+string tag_frame
+string target_frame
+float64 point_cloud_scale_x
+float64 point_cloud_scale_y
+camera_pose_calibration/PatternParameters pattern
+---
+geometry_msgs/Transform transform

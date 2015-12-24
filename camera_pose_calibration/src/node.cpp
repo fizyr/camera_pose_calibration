@@ -49,8 +49,9 @@ CameraPoseCalibrationNode::CameraPoseCalibrationNode() :
 	calibration_plane_marker_publisher = node_handle.advertise<visualization_msgs::Marker>("calibration_plane", 1, true);
 	detected_pattern_publisher         = image_transport.advertise("detected_pattern", 1, true);
 
-	calibrate_server       = node_handle.advertiseService("calibrate",       &CameraPoseCalibrationNode::onCalibrate,      this);
+	calibrate_server       = node_handle.advertiseService("calibrate_call",  &CameraPoseCalibrationNode::onCalibrateCall,      this);
 	calibrate_server_topic = node_handle.advertiseService("calibrate_topic", &CameraPoseCalibrationNode::onCalibrateTopic, this);
+	calibrate_server_topic = node_handle.advertiseService("calibrate_file",  &CameraPoseCalibrationNode::onCalibrateFile,  this);
 
 	// parameters
 	publish_transform = getParam(node_handle, "publish_transform", false);
@@ -59,55 +60,6 @@ CameraPoseCalibrationNode::CameraPoseCalibrationNode() :
 	if (publish_transform) {
 		tf_timer = node_handle.createTimer(publish_rate, &CameraPoseCalibrationNode::onTfTimeout, this);
 	}
-
-	parseInput();
-}
-
-/// Parses ROS parameters and calls the calibration service.
-void CameraPoseCalibrationNode::parseInput() {
-	// no manual input, only through service calls
-	bool manual_input = getParam(node_handle, "manual", false);
-	if (!manual_input) return;
-
-	// construct the request
-	camera_pose_calibration::Calibrate::Request req;
-	req.pattern.pattern_width                 = getParam(node_handle,"pattern_width", 3);
-	req.pattern.pattern_height                = getParam(node_handle,"pattern_height", 9);
-	req.pattern.pattern_distance              = getParam(node_handle,"pattern_distance", 0.04);
-	req.pattern.neighbor_distance             = getParam(node_handle,"neighbor_distance", 0.01);
-	req.pattern.valid_pattern_ratio_threshold = getParam(node_handle,"valid_pattern_ratio_threshold", 0.7);
-	req.tag_frame                             = getParam<std::string>(node_handle,"tag_frame", "calibration_tag");
-	req.target_frame                          = getParam<std::string>(node_handle,"target_frame", "calibration_tag");
-	std::string camera_frame                  = getParam<std::string>(node_handle,"camera_frame", "camera_link");
-
-	// load the image
-	std::string image_path = getParam<std::string>(node_handle, "image_path", "intensity.png");
-	std_msgs::Header header;
-	header.frame_id = camera_frame;
-	cv_bridge::CvImage image_msg(header, sensor_msgs::image_encodings::BGR8, cv::imread(image_path));
-	if (!image_msg.image.data) {
-		ROS_ERROR_STREAM("Failed to read image from " << image_path << ".");
-		return;
-	}
-
-	image_msg.toImageMsg(req.image);
-
-	// load the pointcloud
-	std::string cloud_path = getParam<std::string>(node_handle, "cloud_path", "cloud.pcd");
-	pcl::PointCloud<pcl::PointXYZ>::Ptr cloud(new pcl::PointCloud<pcl::PointXYZ>);
-	if (pcl::io::loadPCDFile(cloud_path, *cloud) == -1) {
-		ROS_ERROR_STREAM("Failed to read pointcloud " << cloud_path << ".");
-		return;
-	}
-
-	cloud->header.frame_id   = camera_frame;
-	pcl_conversions::toPCL(ros::Time::now(), cloud->header.stamp);
-
-	pcl::toROSMsg(*cloud, req.cloud);
-
-	// call the service
-	camera_pose_calibration::Calibrate::Response res;
-	onCalibrate(req, res);
 }
 
 visualization_msgs::Marker CameraPoseCalibrationNode::createCalibrationPlaneMarker(
@@ -169,7 +121,7 @@ void CameraPoseCalibrationNode::onTfTimeout(ros::TimerEvent const &) {
 	}
 }
 
-bool CameraPoseCalibrationNode::onCalibrateTopic(camera_pose_calibration::CalibrateTopic::Request & req, camera_pose_calibration::CalibrateTopic::Response & res) {
+bool CameraPoseCalibrationNode::onCalibrateTopic(camera_pose_calibration::CalibrateTopic::Request & req_topic, camera_pose_calibration::CalibrateTopic::Response & res_topic) {
 	// Use a specific callback queue for the data topics.
 	ros::CallbackQueue queue;
 
@@ -198,8 +150,8 @@ bool CameraPoseCalibrationNode::onCalibrateTopic(camera_pose_calibration::Calibr
 		if (future.wait_for(std::chrono::milliseconds(100)) == std::future_status::ready) break;
 	}
 
-	camera_pose_calibration::Calibrate::Request calibrate_request;
-	camera_pose_calibration::Calibrate::Response calibrate_response;
+	camera_pose_calibration::CalibrateCall::Request calibrate_request;
+	camera_pose_calibration::CalibrateCall::Response calibrate_response;
 
 	// Stop the spinner and copy the result to the request.
 	spinner.stop();
@@ -213,23 +165,64 @@ bool CameraPoseCalibrationNode::onCalibrateTopic(camera_pose_calibration::Calibr
 	}
 
 	// Get all other calibration information from the service call request
-	calibrate_request.tag_frame                     = req.tag_frame;
-	calibrate_request.target_frame                  = req.target_frame;
-	calibrate_request.point_cloud_scale_x           = req.point_cloud_scale_x;
-	calibrate_request.point_cloud_scale_y           = req.point_cloud_scale_y;
-	calibrate_request.pattern                       = req.pattern;
+	calibrate_request.tag_frame                     = req_topic.tag_frame;
+	calibrate_request.target_frame                  = req_topic.target_frame;
+	calibrate_request.point_cloud_scale_x           = req_topic.point_cloud_scale_x;
+	calibrate_request.point_cloud_scale_y           = req_topic.point_cloud_scale_y;
+	calibrate_request.pattern                       = req_topic.pattern;
 
-	if (!onCalibrate(calibrate_request, calibrate_response)) {
+	if (!onCalibrateCall(calibrate_request, calibrate_response)) {
 		return false;
 	}
 
-	res.transform = calibrate_response.transform;
+	res_topic.transform = calibrate_response.transform;
 	return true;
 }
 
+bool CameraPoseCalibrationNode::onCalibrateFile(camera_pose_calibration::CalibrateFile::Request & req_file, camera_pose_calibration::CalibrateFile::Response & res_file) {
+	// construct the request
+	camera_pose_calibration::CalibrateCall::Request req;
+	req.pattern                               = req_file.pattern;
+	req.tag_frame                             = req_file.tag_frame;
+	req.target_frame                          = req_file.target_frame;
+	std::string camera_frame                  = req_file.camera_frame;
+
+	// load the image
+	std::string image_path = getParam<std::string>(node_handle, "image_path", "intensity.png");
+	std_msgs::Header header;
+	header.frame_id = camera_frame;
+	cv_bridge::CvImage image_msg(header, sensor_msgs::image_encodings::BGR8, cv::imread(image_path));
+	if (!image_msg.image.data) {
+		ROS_ERROR_STREAM("Failed to read image from " << image_path << ".");
+		return false;
+	}
+
+	image_msg.toImageMsg(req.image);
+
+	// load the pointcloud
+	std::string cloud_path = getParam<std::string>(node_handle, "cloud_path", "cloud.pcd");
+	pcl::PointCloud<pcl::PointXYZ>::Ptr cloud(new pcl::PointCloud<pcl::PointXYZ>);
+	if (pcl::io::loadPCDFile(cloud_path, *cloud) == -1) {
+		ROS_ERROR_STREAM("Failed to read pointcloud " << cloud_path << ".");
+		return false;
+	}
+
+	cloud->header.frame_id   = camera_frame;
+	pcl_conversions::toPCL(ros::Time::now(), cloud->header.stamp);
+
+	pcl::toROSMsg(*cloud, req.cloud);
+
+	// call the service
+	camera_pose_calibration::CalibrateCall::Response res;
+	onCalibrateCall(req, res);
+
+	res_file.transform = res.transform;
+
+	return true;
+}
 
 /// Calibrates the camera given the information in the request.
-bool CameraPoseCalibrationNode::onCalibrate(camera_pose_calibration::Calibrate::Request & req, camera_pose_calibration::Calibrate::Response & res) {
+bool CameraPoseCalibrationNode::onCalibrateCall(camera_pose_calibration::CalibrateCall::Request & req, camera_pose_calibration::CalibrateCall::Response & res) {
 	ROS_INFO_STREAM("Received calibration request from '" << req.cloud.header.frame_id << "' to '" << req.target_frame << "'.");
 
 	// extract image

@@ -2,7 +2,8 @@
 
 #include <opencv2/opencv.hpp>
 
-#include <camera_pose_calibration/Calibrate.h>
+#include <camera_pose_calibration/CalibrateFile.h>
+#include <camera_pose_calibration/CalibrateCall.h>
 #include <camera_pose_calibration/CalibrateTopic.h>
 #include <visualization_msgs/Marker.h>
 
@@ -84,10 +85,13 @@ protected:
 	void onTfTimeout(ros::TimerEvent const &);
 
 	/// Calibrates the camera given the image and point cloud by a ROS topic, and all other information in the request.
+	bool onCalibrateFile(camera_pose_calibration::CalibrateFile::Request & req, camera_pose_calibration::CalibrateFile::Response & res);
+
+	/// Calibrates the camera given the image and point cloud by a ROS topic, and all other information in the request.
 	bool onCalibrateTopic(camera_pose_calibration::CalibrateTopic::Request & req, camera_pose_calibration::CalibrateTopic::Response & res);
 
-	/// Calibrates the camera given the information in the request.
-	bool onCalibrate(camera_pose_calibration::Calibrate::Request & req, camera_pose_calibration::Calibrate::Response & res);
+	/// Calibrates the camera given all the information in the request.
+	bool onCalibrateCall(camera_pose_calibration::CalibrateCall::Request & req, camera_pose_calibration::CalibrateCall::Response & res);
 };
 
 }
