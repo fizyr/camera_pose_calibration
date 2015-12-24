@@ -131,7 +131,6 @@ bool CameraPoseCalibrationNode::calibrate(
 	camera_pose_calibration::PatternParameters const & pattern,
 	geometry_msgs::Transform & transform
 ) {
-	// Implement calibrate function here{
 	ROS_INFO_STREAM("Received calibration request from '" << sensor_msgs_cloud.header.frame_id << "' to '" << target_frame << "'.");
 
 	// extract image
