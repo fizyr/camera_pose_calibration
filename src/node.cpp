@@ -49,9 +49,9 @@ CameraPoseCalibrationNode::CameraPoseCalibrationNode() :
 	calibration_plane_marker_publisher = node_handle.advertise<visualization_msgs::Marker>("calibration_plane", 1, true);
 	detected_pattern_publisher         = image_transport.advertise("detected_pattern", 1, true);
 
-	calibrate_server       = node_handle.advertiseService("calibrate_call",  &CameraPoseCalibrationNode::onCalibrateCall,  this);
+	calibrate_server_call  = node_handle.advertiseService("calibrate_call",  &CameraPoseCalibrationNode::onCalibrateCall,  this);
 	calibrate_server_topic = node_handle.advertiseService("calibrate_topic", &CameraPoseCalibrationNode::onCalibrateTopic, this);
-	calibrate_server_topic = node_handle.advertiseService("calibrate_file",  &CameraPoseCalibrationNode::onCalibrateFile,  this);
+	calibrate_server_file  = node_handle.advertiseService("calibrate_file",  &CameraPoseCalibrationNode::onCalibrateFile,  this);
 
 	// parameters
 	publish_transform = getParam(node_handle, "publish_transform", false);

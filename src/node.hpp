@@ -54,11 +54,14 @@ protected:
 	/// Publishes a marker for showing the plane of the calibration points.
 	ros::Publisher calibration_plane_marker_publisher;
 
-	/// Service server for calibration.
-	ros::ServiceServer calibrate_server;
+	/// Service server for calibration with all data in the service call.
+	ros::ServiceServer calibrate_server_call;
 
 	/// Service server for calibration with image and cloud from topics.
 	ros::ServiceServer calibrate_server_topic;
+
+	/// Service server for calibration with image and cloud from file.
+	ros::ServiceServer calibrate_server_file;
 
 	/// Timer to periodically republish TF transforms.
 	ros::Timer tf_timer;
