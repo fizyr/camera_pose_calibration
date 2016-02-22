@@ -1,4 +1,4 @@
 <launch>
-	<node name="rviz" pkg="rviz" type="rviz" args="-d $(find dr_extrinsic_calibration)/calibration.rviz" output="screen" />
+	<node name="rviz" pkg="rviz" type="rviz" args="-d $(find camera_pose_calibration)/calibration.rviz" output="screen" />
 </launch>
 <!-- vi: set ft=xml: -->
