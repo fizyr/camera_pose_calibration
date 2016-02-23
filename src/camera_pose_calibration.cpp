@@ -1,3 +1,4 @@
+#include "camera_pose_calibration_impl.hpp"
 #include "camera_pose_calibration.hpp"
 
 #include <pcl/segmentation/sac_segmentation.h>
@@ -95,11 +96,10 @@ Eigen::Isometry3d findIsometry(
 	return Eigen::Isometry3d(transformation.cast<double>());
 }
 
-Eigen::Isometry3d findCalibrationIsometry(
+Eigen::Isometry3d findCalibration(
 	cv::Mat const & image,
 	pcl::PointCloud<pcl::PointXYZ>::Ptr cloud,
-	int pattern_width,
-	int pattern_height,
+	cv::Size const pattern_size,
 	double pattern_distance,
 	double neighbor_distance,
 	double valid_pattern_ratio_threshold,
@@ -107,8 +107,6 @@ Eigen::Isometry3d findCalibrationIsometry(
 	double point_cloud_scale_y,
 	std::shared_ptr<CalibrationInformation> const debug_information
 ) {
-	cv::Size pattern_size(pattern_width, pattern_height);
-
 	if (point_cloud_scale_x == 0) point_cloud_scale_x = 1;
 	if (point_cloud_scale_y == 0) point_cloud_scale_y = 1;
 
@@ -166,7 +164,7 @@ Eigen::Isometry3d findCalibrationIsometry(
 	// remove NaN's
 	std::vector<size_t> nan_indices = findNan(*source_cloud);
 
-	if (double(nan_indices.size()) / (pattern_width * pattern_height) > 1.f - valid_pattern_ratio_threshold) {
+	if (double(nan_indices.size()) / pattern_size.area() > 1.f - valid_pattern_ratio_threshold) {
 		throw std::runtime_error("Found too many invalid (NaN) points to find isometry.");
 	}
 
@@ -193,5 +191,46 @@ Eigen::Isometry3d findCalibrationIsometry(
 	return isometry;
 }
 
+Eigen::Isometry3d findCalibration(
+	cv::Mat const & left_image,
+	cv::Mat const & right_image,
+	Eigen::Matrix4d const & reprojection,
+	cv::Size pattern_size,
+	double pattern_distance
+) {
+	// find pattern
+	std::vector<cv::Point2f> left_points, right_points;
+
+	bool detected_patterns =
+		cv::findCirclesGrid(left_image,  pattern_size, left_points,  cv::CALIB_CB_ASYMMETRIC_GRID) &&
+		cv::findCirclesGrid(right_image, pattern_size, right_points, cv::CALIB_CB_ASYMMETRIC_GRID);
+
+	if (!detected_patterns) {
+		throw std::runtime_error("Failed to find calibration patterns.");
+	}
+
+	// get the (x, y, z) points of the calibration pattern
+	pcl::PointCloud<pcl::PointXYZ>::Ptr source_cloud(new pcl::PointCloud<pcl::PointXYZ>);
+	for (int i = 0; i < pattern_size.area(); ++i) {
+		Eigen::Vector4d point{
+			left_points[i].x, left_points[i].y, left_points[i].x - right_points[i].x, 1
+		};
+		Eigen::Vector3d result = (reprojection * point).hnormalized();
+		source_cloud->push_back(pcl::PointXYZ(result[0], result[1], result[2]));
+	}
+
+	// create target (expected) model
+	pcl::PointCloud<pcl::PointXYZ>::Ptr target_cloud = generateAsymmetricCircles(pattern_distance, pattern_size.height, pattern_size.width);
+
+	// project calibration points to plane to reduce noise
+	pcl::ModelCoefficients::Ptr plane_coefficients = fitPointsToPlane(source_cloud);
+	pcl::PointCloud<pcl::PointXYZ>::Ptr projected_source_cloud(new pcl::PointCloud<pcl::PointXYZ>);
+	projectCloudOnPlane(source_cloud, projected_source_cloud, plane_coefficients);
+
+	// find actual isometry from target (calibration tag) to source (camera)
+	Eigen::Isometry3d isometry = findIsometry(projected_source_cloud, target_cloud);
+
+	return isometry;
+}
 
 }

@@ -36,26 +36,35 @@ generate_messages(
 	DEPENDENCIES geometry_msgs sensor_msgs
 )
 
-catkin_package()
+catkin_package(
+	INCLUDE_DIRS include
+	LIBRARIES ${PROJECT_NAME}
+)
 
 dr_include_directories(
+	include/${PROJECT_NAME}
 	${catkin_INCLUDE_DIRS}
 	${Eigen_INCLUDE_DIRS}
 	${OpenCV_INCLUDE_DIRS}
 	${PCL_INCLUDE_DIRS}
 )
 
-add_library(${PROJECT_NAME}_nodelet SHARED src/nodelet.cpp src/node.cpp src/camera_pose_calibration.cpp)
-target_link_libraries(${PROJECT_NAME}_nodelet
+add_library(${PROJECT_NAME} src/camera_pose_calibration.cpp)
+target_link_libraries(${PROJECT_NAME}
 	${catkin_LIBRARIES}
 	${Eigen_LIBRARIES}
 	${OpenCV_LIBRARIES}
 	${PCL_LIBRARIES}
 )
+
+add_library(${PROJECT_NAME}_nodelet SHARED src/nodelet.cpp src/node.cpp)
+target_link_libraries(${PROJECT_NAME}_nodelet
+	${PROJECT_NAME}
+)
 add_dependencies(${PROJECT_NAME}_nodelet ${PROJECT_NAME}_gencpp)
 
-add_executable(${PROJECT_NAME} src/main.cpp)
-target_link_libraries(${PROJECT_NAME} ${PROJECT_NAME}_nodelet)
+add_executable(${PROJECT_NAME}_node src/main.cpp)
+target_link_libraries(${PROJECT_NAME}_node ${PROJECT_NAME}_nodelet)
 
 
 install(TARGETS ${PROJECT_NAME} ${PROJECT_NAME}_nodelet

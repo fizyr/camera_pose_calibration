@@ -155,11 +155,10 @@ bool CameraPoseCalibrationNode::calibrate(
 	std::shared_ptr<camera_pose_calibration::CalibrationInformation> debug_information(new camera_pose_calibration::CalibrationInformation);
 	Eigen::Isometry3d camera_to_tag;
 	try {
-		camera_to_tag = camera_pose_calibration::findCalibrationIsometry(
+		camera_to_tag = camera_pose_calibration::findCalibration(
 			image,
 			cloud,
-			pattern.pattern_width,
-			pattern.pattern_height,
+			cv::Size(pattern.pattern_width, pattern.pattern_height),
 			pattern.pattern_distance,
 			pattern.neighbor_distance,
 			pattern.valid_pattern_ratio_threshold,
