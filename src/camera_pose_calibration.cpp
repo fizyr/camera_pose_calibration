@@ -105,7 +105,7 @@ Eigen::Isometry3d findCalibration(
 	double valid_pattern_ratio_threshold,
 	double point_cloud_scale_x,
 	double point_cloud_scale_y,
-	std::shared_ptr<CalibrationInformation> const debug_information
+	CalibrationInformation * debug_information
 ) {
 	if (point_cloud_scale_x == 0) point_cloud_scale_x = 1;
 	if (point_cloud_scale_y == 0) point_cloud_scale_y = 1;

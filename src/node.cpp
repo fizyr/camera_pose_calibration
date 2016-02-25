@@ -152,7 +152,7 @@ bool CameraPoseCalibrationNode::calibrate(
 	}
 
 	// find calibration plate in image, and find isometry from camera to calibration plate
-	std::shared_ptr<camera_pose_calibration::CalibrationInformation> debug_information(new camera_pose_calibration::CalibrationInformation);
+	CalibrationInformation debug_information;
 	Eigen::Isometry3d camera_to_tag;
 	try {
 		camera_to_tag = camera_pose_calibration::findCalibration(
@@ -164,7 +164,7 @@ bool CameraPoseCalibrationNode::calibrate(
 			pattern.valid_pattern_ratio_threshold,
 			point_cloud_scale_x,
 			point_cloud_scale_y,
-			debug_information
+			&debug_information
 		);
 	} catch (std::exception const & e) {
 		ROS_ERROR_STREAM("Failed to find isometry. Error: " << e.what());
@@ -200,11 +200,11 @@ bool CameraPoseCalibrationNode::calibrate(
 
 	// clone image and draw detection
 	cv::Mat detected_pattern = image.clone();
-	cv::drawChessboardCorners(detected_pattern, cv::Size(pattern.pattern_width, pattern.pattern_height), cv::Mat(debug_information->image_points), true);
+	cv::drawChessboardCorners(detected_pattern, cv::Size(pattern.pattern_width, pattern.pattern_height), cv::Mat(debug_information.image_points), true);
 
 	// transform the target (model) to the target frame to verify a correct calibration
-	pcl::PointCloud<pcl::PointXYZ>::Ptr transformed_target_cloud(new pcl::PointCloud<pcl::PointXYZ>(*debug_information->target_cloud));
-	pcl::transformPointCloud(*debug_information->target_cloud, *transformed_target_cloud, Eigen::Affine3d(camera_to_tag.inverse()));
+	pcl::PointCloud<pcl::PointXYZ>::Ptr transformed_target_cloud(new pcl::PointCloud<pcl::PointXYZ>(*debug_information.target_cloud));
+	pcl::transformPointCloud(*debug_information.target_cloud, *transformed_target_cloud, Eigen::Affine3d(camera_to_tag.inverse()));
 
 	// copy result to response
 	tf::transformEigenToMsg(camera_to_target, transform);
@@ -221,22 +221,22 @@ bool CameraPoseCalibrationNode::calibrate(
 	// copy headers to publishing pointclouds
 	pcl_conversions::toPCL(now, cloud->header.stamp);
 	transformed_target_cloud->header                  = cloud->header;
-	debug_information->projected_source_cloud->header = cloud->header;
-	debug_information->source_cloud->header           = cloud->header;
-	debug_information->target_cloud->header           = cloud->header;
-	debug_information->target_cloud->header.frame_id  = tag_frame;
+	debug_information.projected_source_cloud->header = cloud->header;
+	debug_information.source_cloud->header           = cloud->header;
+	debug_information.target_cloud->header           = cloud->header;
+	debug_information.target_cloud->header.frame_id  = tag_frame;
 
 	// publish calibration plane
-	visualization_msgs::Marker calibration_plane = createCalibrationPlaneMarker(debug_information->projected_source_cloud, pattern.pattern_width, pattern.pattern_height);
+	visualization_msgs::Marker calibration_plane = createCalibrationPlaneMarker(debug_information.projected_source_cloud, pattern.pattern_width, pattern.pattern_height);
 	calibration_plane.header.stamp = now;
 	calibration_plane_marker_publisher.publish(calibration_plane);
 
 	// publish the debug information
 	cloud_publisher.publish(cloud);
-	target_cloud_publisher.publish(debug_information->target_cloud);
+	target_cloud_publisher.publish(debug_information.target_cloud);
 	transformed_target_cloud_publisher.publish(transformed_target_cloud);
-	source_cloud_publisher.publish(debug_information->source_cloud);
-	projected_source_cloud_publisher.publish(debug_information->projected_source_cloud);
+	source_cloud_publisher.publish(debug_information.source_cloud);
+	projected_source_cloud_publisher.publish(debug_information.projected_source_cloud);
 	detected_pattern_publisher.publish(cv_bridge::CvImage(std_msgs::Header(), "bgr8", detected_pattern).toImageMsg());
 
 	ROS_INFO_STREAM(cloud->header.frame_id << " to " << tag_frame << " :\n" << camera_to_tag.matrix() );

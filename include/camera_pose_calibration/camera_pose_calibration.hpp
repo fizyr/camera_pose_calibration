@@ -41,7 +41,7 @@ Eigen::Isometry3d findCalibration(
 	double valid_pattern_ratio_threshold = 0.7, ///< When the ratio of valid_points / (pattern_width * pattern_height) is below this threshold, there are not enough points to estimate an isometry.
 	double point_cloud_scale_x = 1.0,           ///< Scale in x used to transform points from intensity to pointcloud frame.
 	double point_cloud_scale_y = 1.0,           ///< Scale in y used to transform points from intensity to pointcloud frame.
-	std::shared_ptr<CalibrationInformation> const debug_information = nullptr ///< Extra debugging information.
+	CalibrationInformation * debug_information = nullptr ///< Extra debugging information.
 );
 
 /// Finds the isometry for the asymmetric calibration pattern, given two (undistorted) stereo images and a reprojection matrix.
