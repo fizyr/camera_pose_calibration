@@ -63,3 +63,8 @@ Remaining service call request arguments:
 - neighbor_distance: Find neighboring pixels within a certain distance in pixels and average their x, y, z values
 - valid_pattern_ratio_threshold: Acceptance threshold for the ratio of valid points to NaN values
 
+#### Planned features
+
+- Correction for perspective in determining the blob center.
+- Create services for calibrating with two intensity images and the reprojection matrix
+
