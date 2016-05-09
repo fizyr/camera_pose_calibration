@@ -140,7 +140,8 @@ Eigen::Isometry3d findCalibration(
 	pcl::PointCloud<pcl::PointXYZ>::Ptr source_cloud(new pcl::PointCloud<pcl::PointXYZ>);
 	pcl::KdTreeFLANN<pcl::PointXYZ> kd_tree;
 	kd_tree.setInputCloud(cloud);
-	for (cv::Point const & p : image_points) {
+	for (std::vector<cv::Point2f>::const_iterator i = image_points.begin(); i != image_points.end(); ++i) {
+		cv::Point2f const & p = *i;
 		if (p.x < 0 || p.y < 0) {
 			throw std::runtime_error("Found invalid image point for calibration pattern point.");
 		}
@@ -156,7 +157,8 @@ Eigen::Isometry3d findCalibration(
 			std::vector<int> neighbor_indices;
 			std::vector<float> neighbor_squared_distances;
 			kd_tree.radiusSearch(average, neighbor_distance, neighbor_indices, neighbor_squared_distances);
-			for (int index : neighbor_indices) {
+			for (std::vector<int>::const_iterator i = neighbor_indices.begin(); i != neighbor_indices.end(); ++i) {
+				int index = *i;
 				average.x += cloud->points[index].x;
 				average.y += cloud->points[index].y;
 				average.z += cloud->points[index].z;
@@ -228,9 +230,9 @@ Eigen::Isometry3d findCalibration(
 	// get the (x, y, z) points of the calibration pattern
 	pcl::PointCloud<pcl::PointXYZ>::Ptr source_cloud(new pcl::PointCloud<pcl::PointXYZ>);
 	for (int i = 0; i < pattern_size.area(); ++i) {
-		Eigen::Vector4d point{
+		Eigen::Vector4d point(
 			left_points[i].x, left_points[i].y, left_points[i].x - right_points[i].x, 1
-		};
+		);
 		Eigen::Vector3d result = (reprojection * point).hnormalized();
 		source_cloud->push_back(pcl::PointXYZ(result[0], result[1], result[2]));
 	}

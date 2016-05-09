@@ -13,7 +13,6 @@ find_package(catkin REQUIRED COMPONENTS
 	tf_conversions
 	visualization_msgs
 	nodelet
-	dr_base
 	message_generation
 )
 
@@ -41,8 +40,9 @@ catkin_package(
 	LIBRARIES ${PROJECT_NAME}
 )
 
-dr_include_directories(
+include_directories(
 	include/${PROJECT_NAME}
+	SYSTEM
 	${catkin_INCLUDE_DIRS}
 	${Eigen_INCLUDE_DIRS}
 	${OpenCV_INCLUDE_DIRS}

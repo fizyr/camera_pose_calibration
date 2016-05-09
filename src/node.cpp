@@ -32,8 +32,7 @@
 
 #include <boost/bind.hpp>
 
-#include <future>
-#include <tuple>
+#include <boost/thread/future.hpp>
 
 namespace camera_pose_calibration {
 
@@ -46,10 +45,10 @@ namespace {
 	}
 
 	/// Topic to read point cloud from.
-	constexpr char const * cloud_topic = "points_registered";
+	char const * cloud_topic = "points_registered";
 
 	/// Topic to read image from.
-	constexpr char const * image_topic = "image_color";
+	char const * image_topic = "image_color";
 }
 
 CameraPoseCalibrationNode::CameraPoseCalibrationNode() :
@@ -57,11 +56,11 @@ CameraPoseCalibrationNode::CameraPoseCalibrationNode() :
 	calibrated(false)
 {
 	// initialize ros communication
-	cloud_publisher                    = node_handle.advertise<pcl::PointCloud<pcl::PointXYZ>>("cloud", 1, true);
-	target_cloud_publisher             = node_handle.advertise<pcl::PointCloud<pcl::PointXYZ>>("target", 1, true);
-	transformed_target_cloud_publisher = node_handle.advertise<pcl::PointCloud<pcl::PointXYZ>>("transformed_target", 1, true);
-	source_cloud_publisher             = node_handle.advertise<pcl::PointCloud<pcl::PointXYZ>>("source", 1, true);
-	projected_source_cloud_publisher   = node_handle.advertise<pcl::PointCloud<pcl::PointXYZ>>("projected_source", 1, true);
+	cloud_publisher                    = node_handle.advertise<pcl::PointCloud<pcl::PointXYZ> >("cloud", 1, true);
+	target_cloud_publisher             = node_handle.advertise<pcl::PointCloud<pcl::PointXYZ> >("target", 1, true);
+	transformed_target_cloud_publisher = node_handle.advertise<pcl::PointCloud<pcl::PointXYZ> >("transformed_target", 1, true);
+	source_cloud_publisher             = node_handle.advertise<pcl::PointCloud<pcl::PointXYZ> >("source", 1, true);
+	projected_source_cloud_publisher   = node_handle.advertise<pcl::PointCloud<pcl::PointXYZ> >("projected_source", 1, true);
 	calibration_plane_marker_publisher = node_handle.advertise<visualization_msgs::Marker>("calibration_plane", 1, true);
 	detected_pattern_publisher         = image_transport.advertise("detected_pattern", 1, true);
 
@@ -301,6 +300,12 @@ bool CameraPoseCalibrationNode::onCalibrateFile(camera_pose_calibration::Calibra
 	);
 }
 
+typedef std::pair<sensor_msgs::Image::ConstPtr, sensor_msgs::PointCloud2::ConstPtr> InputData;
+
+void synchronizationCallback(boost::promise<InputData> & promise, sensor_msgs::Image::ConstPtr image, sensor_msgs::PointCloud2::ConstPtr cloud) {
+	promise.set_value(InputData(image, cloud));
+}
+
 bool CameraPoseCalibrationNode::onCalibrateTopic(camera_pose_calibration::CalibrateTopic::Request & req, camera_pose_calibration::CalibrateTopic::Response & res) {
 	// Use a specific callback queue for the data topics.
 	ros::CallbackQueue queue;
@@ -310,15 +315,11 @@ bool CameraPoseCalibrationNode::onCalibrateTopic(camera_pose_calibration::Calibr
 	message_filters::Subscriber<sensor_msgs::PointCloud2> cloud_sub(node_handle, cloud_topic, 1, ros::TransportHints(), &queue);
 	message_filters::TimeSynchronizer<sensor_msgs::Image, sensor_msgs::PointCloud2> sync(image_sub, cloud_sub, 10);
 
-	using InputData = std::tuple<sensor_msgs::Image::ConstPtr, sensor_msgs::PointCloud2::ConstPtr>;
 
 	// Use a promise/future for communicating the data between threads.
-	std::promise<InputData> promise;
-	std::future<InputData> future = promise.get_future();
-	auto callback = boost::bind<void>([&promise] (sensor_msgs::Image::ConstPtr image, sensor_msgs::PointCloud2::ConstPtr cloud) {
-		promise.set_value(std::make_tuple(image, cloud));
-	}, _1, _2);
-	sync.registerCallback(callback);
+	boost::promise<InputData> promise;
+	boost::unique_future<InputData> future = promise.get_future();
+	sync.registerCallback(boost::bind(&synchronizationCallback, boost::ref(promise), _1, _2));
 
 	// Run a background spinner for the callback queue.
 	ros::AsyncSpinner spinner(1, &queue);
@@ -327,14 +328,14 @@ bool CameraPoseCalibrationNode::onCalibrateTopic(camera_pose_calibration::Calibr
 	// Wait for the future.
 	while (true) {
 		if (!node_handle.ok()) return false;
-		if (future.wait_for(std::chrono::milliseconds(100)) == std::future_status::ready) break;
+		if (future.wait_for(boost::chrono::milliseconds(100)) == boost::future_status::ready) break;
 	}
 
 	// Stop the spinner and copy the result to the request.
 	spinner.stop();
 	InputData data = future.get();
-	sensor_msgs::Image image       = *std::get<0>(data);
-	sensor_msgs::PointCloud2 cloud = *std::get<1>(data);
+	sensor_msgs::Image image       = *data.first;
+	sensor_msgs::PointCloud2 cloud = *data.second;
 
 	if (image.data.empty() || cloud.data.empty()) {
 		ROS_ERROR_STREAM("No image and/or point cloud received.");
