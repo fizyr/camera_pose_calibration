@@ -66,6 +66,8 @@ add_dependencies(${PROJECT_NAME}_nodelet ${PROJECT_NAME}_gencpp)
 add_executable(${PROJECT_NAME}_node src/main.cpp)
 target_link_libraries(${PROJECT_NAME}_node ${PROJECT_NAME}_nodelet)
 
+catkin_add_gtest(${PROJECT_NAME}_test test/camera_pose_calibration.cpp)
+target_link_libraries(${PROJECT_NAME}_test ${catkin_LIBRARIES} ${PROJECT_NAME})
 
 install(TARGETS ${PROJECT_NAME} ${PROJECT_NAME}_nodelet
 	ARCHIVE DESTINATION ${CATKIN_PACKAGE_LIB_DESTINATION}
