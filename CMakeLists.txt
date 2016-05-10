@@ -2,20 +2,21 @@ cmake_minimum_required(VERSION 2.8.3)
 project(camera_pose_calibration)
 
 find_package(catkin REQUIRED COMPONENTS
-	roscpp
-	pcl_ros
-	cv_bridge
 	cmake_modules
+	cv_bridge
 	eigen_conversions
-	sensor_msgs
 	image_transport
+	message_generation
+	nodelet
 	tf
 	tf_conversions
+	pcl_ros
+	roscpp
+	sensor_msgs
 	visualization_msgs
-	nodelet
-	message_generation
 )
 
+find_package(Boost REQUIRED)
 find_package(Eigen REQUIRED)
 find_package(OpenCV REQUIRED)
 find_package(PCL REQUIRED)
@@ -32,7 +33,7 @@ add_service_files(
 )
 
 generate_messages(
-	DEPENDENCIES geometry_msgs sensor_msgs
+	DEPENDENCIES sensor_msgs
 )
 
 catkin_package(
@@ -44,6 +45,7 @@ include_directories(
 	include/${PROJECT_NAME}
 	SYSTEM
 	${catkin_INCLUDE_DIRS}
+	${Boost_INCLUDE_DIRS}
 	${Eigen_INCLUDE_DIRS}
 	${OpenCV_INCLUDE_DIRS}
 	${PCL_INCLUDE_DIRS}
@@ -52,6 +54,7 @@ include_directories(
 add_library(${PROJECT_NAME} src/camera_pose_calibration.cpp)
 target_link_libraries(${PROJECT_NAME}
 	${catkin_LIBRARIES}
+	${Boost_LIBRARIES}
 	${Eigen_LIBRARIES}
 	${OpenCV_LIBRARIES}
 	${PCL_LIBRARIES}
