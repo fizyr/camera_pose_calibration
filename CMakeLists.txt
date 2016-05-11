@@ -16,10 +16,10 @@ find_package(catkin REQUIRED COMPONENTS
 	visualization_msgs
 )
 
-find_package(Boost REQUIRED COMPONENTS chrono thread)
 find_package(Eigen REQUIRED)
 find_package(OpenCV REQUIRED)
 find_package(PCL REQUIRED)
+find_package(Boost REQUIRED COMPONENTS chrono thread)
 
 link_directories(${PCL_LIBRARY_DIRS})
 add_definitions(${PCL_DEFINITIONS})
