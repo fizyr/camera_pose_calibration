@@ -63,6 +63,7 @@ target_link_libraries(${PROJECT_NAME}
 add_library(${PROJECT_NAME}_nodelet SHARED src/nodelet.cpp src/node.cpp)
 target_link_libraries(${PROJECT_NAME}_nodelet
 	${PROJECT_NAME}
+	${Boost_LIBRARIES}
 )
 add_dependencies(${PROJECT_NAME}_nodelet ${PROJECT_NAME}_gencpp)
 
