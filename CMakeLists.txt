@@ -16,6 +16,7 @@ find_package(catkin REQUIRED COMPONENTS
 	visualization_msgs
 )
 
+find_package(Boost REQUIRED COMPONENTS system filesystem thread date_time iostreams serialization)
 find_package(Eigen REQUIRED)
 find_package(OpenCV REQUIRED)
 find_package(PCL REQUIRED)
