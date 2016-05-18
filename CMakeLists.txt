@@ -20,7 +20,7 @@ find_package(Boost REQUIRED COMPONENTS system filesystem thread date_time iostre
 find_package(Eigen REQUIRED)
 find_package(OpenCV REQUIRED)
 find_package(PCL REQUIRED)
-find_package(Boost REQUIRED COMPONENTS chrono thread)
+find_package(Boost REQUIRED COMPONENTS thread chrono)
 
 link_directories(${PCL_LIBRARY_DIRS})
 add_definitions(${PCL_DEFINITIONS})
