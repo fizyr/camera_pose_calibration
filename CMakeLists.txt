@@ -21,7 +21,7 @@ find_package(OpenCV REQUIRED)
 find_package(PCL REQUIRED)
 find_package(Boost REQUIRED COMPONENTS system filesystem thread chrono date_time iostreams serialization)
 
-message(WARNING ${Boost_LIBRARIES})
+message(STATUS "Boost_LIBRARIES: ${Boost_LIBRARIES}")
 
 add_definitions(${PCL_DEFINITIONS})
 
