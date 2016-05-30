@@ -20,6 +20,8 @@
 	<depend>dr_base</depend>
 	<depend>eigen_conversions</depend>
 	<depend>image_transport</depend>
+	<depend>geometry_msgs</depend>
+	<depend>message_generation</depend>
 	<depend>nodelet</depend>
 	<depend>pcl_ros</depend>
 	<depend>roscpp</depend>
@@ -27,6 +29,9 @@
 	<depend>tf</depend>
 	<depend>tf_conversions</depend>
 	<depend>visualization_msgs</depend>
+
+	<test_depend>rosunit</test_depend>
+	<exec_depend>message_runtime</exec_depend>
 
 	<export>
 		<nodelet plugin="${prefix}/nodelet_plugins.xml" />
