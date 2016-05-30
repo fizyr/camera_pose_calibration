@@ -2,6 +2,10 @@
 Changelog for package camera_pose_calibration
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
+Forthcoming
+-----------
+Fix Boost Linking error
+
 0.1.3 (2016-05-09)
 ------------------
 * Remove C++11 features for indigo.
