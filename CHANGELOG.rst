@@ -2,6 +2,10 @@
 Changelog for package camera_pose_calibration
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
+Forthcoming
+-----------
+Clean up CMakeLists.txt
+
 0.1.4 (2016-05-30)
 ------------------
 Fix Boost Linking error
