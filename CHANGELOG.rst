@@ -2,6 +2,10 @@
 Changelog for package camera_pose_calibration
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
+Forthcoming
+-----------
+* Clean up CMakeLists.txt and package.xml
+
 0.1.2 (2016-04-28)
 ------------------
 * Update dependencies
