@@ -2,8 +2,8 @@
 Changelog for package camera_pose_calibration
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-Forthcoming
------------
+0.1.4 (2016-05-30)
+------------------
 Fix Boost Linking error
 
 0.1.3 (2016-05-09)
