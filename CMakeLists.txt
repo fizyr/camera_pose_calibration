@@ -4,7 +4,7 @@ project(camera_pose_calibration)
 set(CMAKE_CXX_STANDARD 11)
 set(CMAKE_CXX_STANDARD_REQUIRED on)
 set(CMAKE_CXX_EXTENSIONS off)
-add_compile_options(-Wall -Wextra -Wpedantic)
+add_compile_options(-Wall -Wextra)
 
 find_package(catkin REQUIRED COMPONENTS
 	cv_bridge
