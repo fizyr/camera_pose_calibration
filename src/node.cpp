@@ -28,7 +28,9 @@
 #include <sensor_msgs/image_encodings.h>
 #include <cv_bridge/cv_bridge.h>
 #include <message_filters/subscriber.h>
-#include <message_filters/time_synchronizer.h>
+#include <message_filters/synchronizer.h>
+#include <message_filters/sync_policies/approximate_time.h>
+#include <message_filters/sync_policies/exact_time.h>
 
 #include <boost/bind.hpp>
 
@@ -50,6 +52,13 @@ namespace {
 
 	/// Topic to read image from.
 	constexpr char const * image_topic = "image_color";
+
+	/// Convert string to sync policy enum.
+	SyncPolicy stringToSyncPolicy(std::string const & input) {
+		if (input == "exact") return SyncPolicy::exact;
+		if (input == "approximate") return SyncPolicy::approximate;
+		throw std::runtime_error("unknown synchronization policy: " + input);
+	}
 }
 
 CameraPoseCalibrationNode::CameraPoseCalibrationNode() :
@@ -72,6 +81,7 @@ CameraPoseCalibrationNode::CameraPoseCalibrationNode() :
 	// parameters
 	publish_transform = getParam(node_handle, "publish_transform", false);
 	publish_rate      = getParam(node_handle, "publish_rate", 1);
+	sync_policy       = stringToSyncPolicy(getParam<std::string>(node_handle, "sync_policy", "exact"));
 
 	if (publish_transform) {
 		tf_timer = node_handle.createTimer(publish_rate, &CameraPoseCalibrationNode::onTfTimeout, this);
@@ -236,7 +246,7 @@ bool CameraPoseCalibrationNode::calibrate(
 
 	// copy headers to publishing pointclouds
 	pcl_conversions::toPCL(now, cloud->header.stamp);
-	transformed_target_cloud->header                  = cloud->header;
+	transformed_target_cloud->header                 = cloud->header;
 	debug_information.projected_source_cloud->header = cloud->header;
 	debug_information.source_cloud->header           = cloud->header;
 	debug_information.target_cloud->header           = cloud->header;
@@ -301,24 +311,63 @@ bool CameraPoseCalibrationNode::onCalibrateFile(camera_pose_calibration::Calibra
 	);
 }
 
+namespace {
+	/// Base close for storing pointers to erased types.
+	struct Erased{
+		virtual ~Erased() {};
+	};
+
+	/// Subclass of Erased for specific T.
+	template<typename T>
+	struct ErasedImpl : camera_pose_calibration::Erased, T {
+		template<typename ...Args>
+		ErasedImpl(Args && ...args) : T{std::forward<Args>(args)...} {}
+	};
+
+	/// Create a pointer to an object with the type erased.
+	/**
+	 * Used for keeping objects alive without knowning their type.
+	 */
+	template<typename T, typename... Args>
+	std::unique_ptr<Erased> makeErasedPtr(Args && ...args) {
+		return std::unique_ptr<Erased>{new ErasedImpl<typename std::decay<T>::type>(std::forward<Args>(args)...)};
+	}
+
+	/// Create a type-erased synchronizer with a specified policy, callback and inputs.
+	template<typename Policy, typename Callback, typename... Inputs>
+	std::unique_ptr<Erased> makeErasedSyncer(Policy && policy, Callback && callback, Inputs && ...inputs) {
+		using Synchronizer = message_filters::Synchronizer<typename std::decay<Policy>::type>;
+		auto sync = makeErasedPtr<Synchronizer>(std::forward<Policy>(policy), std::forward<Inputs>(inputs)...);
+		static_cast<ErasedImpl<Synchronizer>&>(*sync).registerCallback(std::forward<Callback>(callback));
+		return sync;
+	}
+}
+
 bool CameraPoseCalibrationNode::onCalibrateTopic(camera_pose_calibration::CalibrateTopic::Request & req, camera_pose_calibration::CalibrateTopic::Response & res) {
 	// Use a specific callback queue for the data topics.
 	ros::CallbackQueue queue;
 
-	// Synchronize image and point cloud from topic
-	message_filters::Subscriber<sensor_msgs::Image> image_sub(node_handle, image_topic, 1, ros::TransportHints(), &queue);
-	message_filters::Subscriber<sensor_msgs::PointCloud2> cloud_sub(node_handle, cloud_topic, 1, ros::TransportHints(), &queue);
-	message_filters::TimeSynchronizer<sensor_msgs::Image, sensor_msgs::PointCloud2> sync(image_sub, cloud_sub, 10);
-
-	using InputData = std::tuple<sensor_msgs::Image::ConstPtr, sensor_msgs::PointCloud2::ConstPtr>;
-
 	// Use a promise/future for communicating the data between threads.
+	using InputData = std::tuple<sensor_msgs::Image::ConstPtr, sensor_msgs::PointCloud2::ConstPtr>;
 	std::promise<InputData> promise;
 	std::future<InputData> future = promise.get_future();
 	auto callback = boost::bind<void>([&promise] (sensor_msgs::Image::ConstPtr image, sensor_msgs::PointCloud2::ConstPtr cloud) {
 		promise.set_value(std::make_tuple(image, cloud));
 	}, _1, _2);
-	sync.registerCallback(callback);
+
+	// Synchronize image and point cloud from topic
+	message_filters::Subscriber<sensor_msgs::Image> image_sub(node_handle, image_topic, 1, ros::TransportHints(), &queue);
+	message_filters::Subscriber<sensor_msgs::PointCloud2> cloud_sub(node_handle, cloud_topic, 1, ros::TransportHints(), &queue);
+	std::unique_ptr<Erased> sync;
+	if (sync_policy == SyncPolicy::exact) {
+		using Policy = message_filters::sync_policies::ExactTime<sensor_msgs::Image, sensor_msgs::PointCloud2>;
+		sync = makeErasedSyncer(Policy{10}, callback, image_sub, cloud_sub);
+	} else if (sync_policy == SyncPolicy::approximate) {
+		using Policy = message_filters::sync_policies::ApproximateTime<sensor_msgs::Image, sensor_msgs::PointCloud2>;
+		sync = makeErasedSyncer(Policy{10}, callback, image_sub, cloud_sub);
+	} else {
+		throw std::runtime_error("unknown sync policy: " + std::to_string(int(sync_policy)));
+	}
 
 	// Run a background spinner for the callback queue.
 	ros::AsyncSpinner spinner(1, &queue);

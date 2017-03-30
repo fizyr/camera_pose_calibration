@@ -41,9 +41,9 @@ std::vector<size_t> findNan(
 
 /// Defines the asymmetric circles calibration pattern
 pcl::PointCloud<pcl::PointXYZ>::Ptr generateAsymmetricCircles(
-	double distance,                            ///< Distance between adjacent circles
-	size_t pattern_height,                      ///< Number of circles in vertical direction
-	size_t pattern_width                        ///< Number of circles in horizontal direction
+	double distance,       ///< Distance between adjacent circles
+	size_t pattern_height, ///< Number of circles in vertical direction
+	size_t pattern_width   ///< Number of circles in horizontal direction
 );
 
 /// Fits a plane to a point cloud and gives the projected point cloud and the plane coefficients

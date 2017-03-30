@@ -13,7 +13,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
+#pragma once
 #include "camera_pose_calibration.hpp"
 
 #include <opencv2/opencv.hpp>
@@ -29,8 +29,13 @@
 #include <image_transport/image_transport.h>
 #include <ros/ros.h>
 
-
 namespace camera_pose_calibration {
+
+/// Sync policy.
+enum class SyncPolicy {
+	exact,
+	approximate
+};
 
 class CameraPoseCalibrationNode {
 public:
@@ -84,6 +89,9 @@ protected:
 
 	/// The found calibration transformation.
 	tf::StampedTransform calibration_transform;
+
+	/// Sync policy to use for retrieving point clouds and images from topics.
+	SyncPolicy sync_policy;
 
 	/// Determines whether to publish the transform over tf.
 	bool publish_transform;
