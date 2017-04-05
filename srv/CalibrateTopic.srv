@@ -1,3 +1,5 @@
+string cloud_topic
+string image_topic
 string tag_frame
 string target_frame
 float64 point_cloud_scale_x

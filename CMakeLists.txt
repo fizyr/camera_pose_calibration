@@ -1,10 +1,13 @@
-cmake_minimum_required(VERSION 2.8.3)
+cmake_minimum_required(VERSION 3.1)
 project(camera_pose_calibration)
 
+set(CMAKE_CXX_STANDARD 11)
+set(CMAKE_CXX_STANDARD_REQUIRED on)
+set(CMAKE_CXX_EXTENSIONS off)
+add_compile_options(-Wall -Wextra)
+
 find_package(catkin REQUIRED COMPONENTS
-	cmake_modules
 	cv_bridge
-	dr_base
 	eigen_conversions
 	geometry_msgs
 	image_transport
@@ -18,34 +21,28 @@ find_package(catkin REQUIRED COMPONENTS
 	visualization_msgs
 )
 
-find_package(Eigen REQUIRED)
+find_package(Eigen3 REQUIRED)
 find_package(OpenCV REQUIRED)
 find_package(PCL REQUIRED)
+find_package(Boost REQUIRED)
 
 add_definitions(${PCL_DEFINITIONS})
 
-add_message_files(
-	DIRECTORY msg
+add_message_files(DIRECTORY msg)
+add_service_files(DIRECTORY srv)
+generate_messages(DEPENDENCIES
+	geometry_msgs
+	sensor_msgs
 )
 
-add_service_files(
-	DIRECTORY srv
-)
+catkin_package()
 
-generate_messages(
-	DEPENDENCIES geometry_msgs sensor_msgs
-)
-
-catkin_package(
-	INCLUDE_DIRS
-	LIBRARIES ${PROJECT_NAME}
-	CATKIN_DEPENDS geometry_msgs message_runtime roscpp sensor_msgs visualization_msgs
-)
-
-dr_include_directories(
+include_directories(
 	include/${PROJECT_NAME}
+SYSTEM
 	${catkin_INCLUDE_DIRS}
-	${Eigen_INCLUDE_DIRS}
+	${Boost_INCLUDE_DIRS}
+	${EIGEN3_INCLUDE_DIRS}
 	${OpenCV_INCLUDE_DIRS}
 	${PCL_INCLUDE_DIRS}
 )
@@ -53,12 +50,15 @@ dr_include_directories(
 add_library(${PROJECT_NAME} src/${PROJECT_NAME}.cpp)
 target_link_libraries(${PROJECT_NAME}
 	${catkin_LIBRARIES}
-	${Eigen_LIBRARIES}
+	${EIGEN3_LIBRARIES}
 	${OpenCV_LIBRARIES}
 	${PCL_LIBRARIES}
 )
 
-add_library(${PROJECT_NAME}_nodelet SHARED src/node.cpp src/nodelet.cpp)
+add_library(${PROJECT_NAME}_nodelet SHARED
+	src/node.cpp
+	src/nodelet.cpp
+)
 target_link_libraries(${PROJECT_NAME}_nodelet
 	${PROJECT_NAME}
 )
@@ -79,5 +79,4 @@ install(TARGETS ${PROJECT_NAME} ${PROJECT_NAME}_node ${PROJECT_NAME}_nodelet
 )
 
 install(DIRECTORY launch DESTINATION ${CATKIN_PACKAGE_SHARE_DESTINATION})
-
 install(FILES nodelet_plugins.xml DESTINATION ${CATKIN_PACKAGE_SHARE_DESTINATION})
