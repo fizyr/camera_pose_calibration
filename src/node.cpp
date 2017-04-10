@@ -256,7 +256,7 @@ bool CameraPoseCalibrationNode::calibrate(
 	detected_pattern_publisher.publish(cv_bridge::CvImage(std_msgs::Header(), "bgr8", detected_pattern).toImageMsg());
 
 	ROS_INFO_STREAM(cloud->header.frame_id << " to " << tag_frame << " :\n" << camera_to_tag.matrix() );
-	ROS_INFO_STREAM(tag_frame << " to " << cloud->header.frame_id << " :\n" << camera_to_tag.matrix().inverse() );
+	ROS_INFO_STREAM(tag_frame << " to " << cloud->header.frame_id << " :\n" << camera_to_tag.inverse().matrix() );
 	ROS_INFO_STREAM(cloud->header.frame_id << " to " << target_frame << " :\n" << camera_to_target.matrix() );
 
 	return true;
