@@ -67,6 +67,9 @@ add_dependencies(${PROJECT_NAME}_nodelet ${PROJECT_NAME}_gencpp)
 add_executable(${PROJECT_NAME}_node src/main.cpp)
 target_link_libraries(${PROJECT_NAME}_node ${PROJECT_NAME}_nodelet)
 
+add_executable(example_cam_cal src/example_cam_cal.cpp)
+target_link_libraries(example_cam_cal ${PROJECT_NAME}_nodelet)
+
 add_executable(test_matrix_inverse src/test_matrix_inverse.cpp)
 target_link_libraries(test_matrix_inverse ${catkin_LIBRARIES})
 
