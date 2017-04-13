@@ -41,7 +41,7 @@ int main(int argc, char **argv)
   srv.request.image = path + "/data/example/cal.jpg";
   srv.request.tag_frame = "calibration_circles_frame"; // This is defined in a URDF. It's fixed
   srv.request.camera_frame = "camera_ee_depth_frame"; // Unknown pose. Find its relation to target_frame
-  srv.request.target_frame = "right_ur5_r200_link"; // This is defined in a URDF. It's fixed
+  srv.request.target_frame = "base_link"; // This is defined in a URDF. It's fixed
   srv.request.point_cloud_scale_x = 1;
   srv.request.point_cloud_scale_y = 1;
 
