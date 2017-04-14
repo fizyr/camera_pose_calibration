@@ -31,14 +31,18 @@ int main(int argc, char **argv)
 
   ros::ServiceClient client = n.serviceClient<camera_pose_calibration::CalibrateFile>("calibrate_file");
 
+  // Set the ROS parameter... we want the cal node to publish the tf when it's done
+  n.setParam("publish_transform", true);
+  n.setParam("publish_rate", 100);
+
   camera_pose_calibration::CalibrateFile srv;
   
-  // Get the filepaths to image & pointcloud datafiles
-  std::string path = ros::package::getPath("camera_pose_calibration");
+  // Get the file paths to image & pointcloud datafiles
+  std::string package_path = ros::package::getPath("camera_pose_calibration");
 
   // Fill out the service request
-  srv.request.cloud = path + "/data/example/cal.pcd";
-  srv.request.image = path + "/data/example/cal.jpg";
+  srv.request.cloud = package_path + "/data/example/cal.pcd";
+  srv.request.image = package_path + "/data/example/cal.jpg";
   srv.request.tag_frame = "calibration_circles_frame"; // This is defined in a URDF. It's fixed
   srv.request.camera_frame = "camera_ee_depth_frame"; // Unknown pose. Find its relation to target_frame
   srv.request.target_frame = "base_link"; // This is defined in a URDF. It's fixed
