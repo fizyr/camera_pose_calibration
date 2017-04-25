@@ -211,8 +211,18 @@ bool CameraPoseCalibrationNode::calibrate(
 		}
 	}
 
+	// Hack by Andy Zelenak, 4/25/2017.
+	// Accounts for rotation and offset that was observed
+	// Since it's applied last (left-most matrix), it's in the target frame
+	double a = -52.*3.14159/180.; // Angle of rotation about z
+	Eigen::Isometry3d empirical_correction;
+	empirical_correction(0,0) = cos(a); empirical_correction(0,1) = -sin(a); empirical_correction(0,2) = 0; empirical_correction(0,3) = 0;
+	empirical_correction(1,0) = sin(a); empirical_correction(1,1) = cos(a); empirical_correction(1,2) = 0; empirical_correction(1,3) = -0.09;
+	empirical_correction(2,0) = 0; empirical_correction(2,1) = 0; empirical_correction(2,2) = 1; empirical_correction(2,3) = .66;
+	empirical_correction(3,0) = 0; empirical_correction(3,1) = 0; empirical_correction(3,2) = 0; empirical_correction(3,3) = 1;
+
 	// transform for target to camera frame
-	Eigen::Isometry3d camera_to_target = tag_to_target * camera_to_tag;
+	Eigen::Isometry3d camera_to_target = empirical_correction * tag_to_target * camera_to_tag;
 
 	// clone image and draw detection
 	cv::Mat detected_pattern = image.clone();
@@ -230,9 +240,8 @@ bool CameraPoseCalibrationNode::calibrate(
 	tf::Transform tf_camera_to_target;
 	transformEigenToTF(camera_to_target, tf_camera_to_target);
 	calibration_transform = tf::StampedTransform(tf_camera_to_target, now, target_frame, cloud->header.frame_id);
-	if (publish_transform) {
+	if (publish_transform)
 		transform_broadcaster.sendTransform(calibration_transform);
-	}
 
 	// copy headers to publishing pointclouds
 	pcl_conversions::toPCL(now, cloud->header.stamp);

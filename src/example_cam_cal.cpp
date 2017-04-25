@@ -53,24 +53,16 @@ int main(int argc, char **argv)
   // See http://answers.ros.org/question/258014/parameters-for-camera_pose_calibration/
   circle_pattern.pattern_width = 4; // 4 circles wide
   circle_pattern.pattern_height = 11; // 11 circles long
-  circle_pattern.pattern_distance = 0.037; // Distance between circle centers. [m]
+  circle_pattern.pattern_distance = 0.038; // Distance between circle centers. [m]
   circle_pattern.neighbor_distance = 1; // Expected distance between pixels of image
   circle_pattern.valid_pattern_ratio_threshold = 0.5; // Min. ratio of valid pixels to NaN's
   srv.request.pattern = circle_pattern;
 
   if (!client.call(srv))
   {
-    ROS_ERROR("Failed to call service calibrate_file");
+    ROS_ERROR("Failed to call service 'calibrate_file'");
     return 1;
   }
-
-  // Normalize the quaternion. Would be nice if srv.response.transform.rotation.normalize() worked
-  tf::Quaternion quat(srv.response.transform.rotation.x, srv.response.transform.rotation.y, srv.response.transform.rotation.z, srv.response.transform.rotation.z);
-
-  quat.normalize();
-
-  ROS_INFO_STREAM("Camera translation: " << std::endl << srv.response.transform.translation );
-  ROS_INFO_STREAM("Camera rotation (quaternion): " << std::endl << quat.x() <<"  "<< quat.y() <<"  "<< quat.z() <<"  "<< quat.w() );
 
   return 0;
 }
