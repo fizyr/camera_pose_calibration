@@ -43,7 +43,7 @@ int main(int argc, char **argv)
   // Fill out the service request
   srv.request.cloud = package_path + "/data/example/cal.pcd";
   srv.request.image = package_path + "/data/example/cal.jpg";
-  srv.request.tag_frame = "calibration_circles_frame"; // This is defined in a URDF. It's fixed
+  srv.request.tag_frame = "calibration_circles_frame"; // This is defined in a URDF. It's known.
   srv.request.camera_frame = "camera_ee_depth_frame"; // Unknown pose. Find its relation to target_frame
   srv.request.target_frame = "base_link"; // This is defined in a URDF. It's fixed
   srv.request.point_cloud_scale_x = 1;
@@ -53,9 +53,9 @@ int main(int argc, char **argv)
   // See http://answers.ros.org/question/258014/parameters-for-camera_pose_calibration/
   circle_pattern.pattern_width = 4; // 4 circles wide
   circle_pattern.pattern_height = 11; // 11 circles long
-  circle_pattern.pattern_distance = 0.02; // Distance between circle centers. Can be in [m] or [cm], as long as all are consistent
-  circle_pattern.neighbor_distance = 0.001; // Distance between pixels of image
-  circle_pattern.valid_pattern_ratio_threshold = 0.00001; // Min. ratio of valid pixels to NaN's
+  circle_pattern.pattern_distance = 0.037; // Distance between circle centers. [m]
+  circle_pattern.neighbor_distance = 1; // Expected distance between pixels of image
+  circle_pattern.valid_pattern_ratio_threshold = 0.5; // Min. ratio of valid pixels to NaN's
   srv.request.pattern = circle_pattern;
 
   if (!client.call(srv))
