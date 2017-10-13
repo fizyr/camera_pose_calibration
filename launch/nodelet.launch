@@ -2,7 +2,7 @@
 <launch>
 	<node pkg="nodelet" type="nodelet" name="standalone_nodelet"  args="manager" output="screen"/>
 
-	<node pkg="nodelet" type="nodelet" name="CirclesCalibrationNodelet" args="load dr/CirclesCalibrationNodelet standalone_nodelet" output="screen">
+	<node pkg="nodelet" type="nodelet" name="CameraPoseCalibrationNodelet" args="load camera_pose_calibration/CameraPoseCalibrationNodelet standalone_nodelet" output="screen">
 	</node>
 </launch>
 
