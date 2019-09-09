@@ -22,6 +22,9 @@ The package expects as input an image and a registered point cloud with the Open
 - The asymmetric circle pattern can be detected in the image, and registered point cloud data is available for the corresponding points
 - This package works only for the OpenCV asymmetric circle pattern because the pose of an asymmetric circle pattern is uniquely defined.
 - Other standard calibration patterns such as chessboard pattern and circles pattern do not have this property and because of that not supported by this package.
+- The image data (senror_msgs::Image) are published in the 'image_color' topic. Notice that the image data can also be black & white. The topic can be changed from [here](https://github.com/fizyr/camera_pose_calibration/blob/master/src/node.cpp#L52)
+- The depth data (sensor_msgs::PointCloud2) are published in the 'points_registered' topic. This can be changed from [here](https://github.com/fizyr/camera_pose_calibration/blob/master/src/node.cpp#L49)
+- The image and depth data must be published with the exact same timestamp. Otherwise, the package enters an infinite loop. If you cannot ensure exact timing, there is a [workaround](https://github.com/tassos/camera_pose_calibration/commit/380f90a5181c606477961295f15cc774a7db9962)
 
 ## Pattern
 The asymmetric circle pattern can be taken from [https://docs.opencv.org/2.4/_downloads/acircles_pattern.png](https://docs.opencv.org/2.4/_downloads/acircles_pattern.png):
